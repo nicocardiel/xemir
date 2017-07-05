@@ -6,9 +6,11 @@ from datetime import datetime
 import json
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy import optimize
 
 from numina.array.display.polfit_residuals import polfit_residuals
 from numina.array.display.pause_debugplot import pause_debugplot
+from numina.array.display.ximplot import ximplot
 from emirdrp.core import EMIR_NBARS
 
 from emir_definitions import NAXIS1_EMIR
@@ -102,15 +104,15 @@ def exvp_scalar(x, y, x0, y0, c1, c2):
     y : float
         Y coordinate (pixel).
     x0 : float
-        X coordinate of reference pixel.
+        X coordinate of reference pixel, in units of 1E3.
     y0 : float
-        Y coordinate of reference pixel.
+        Y coordinate of reference pixel, in units of 1E3.
     c1 : float
         Coefficient corresponding to the term r**2 in distortion
-        equation.
+        equation, in units of 1E4.
     c2 : float
         Coefficient corresponding to the term r**4 in distortion
-        equation.
+        equation, in units of 1E9
 
     Returns
     -------
@@ -122,21 +124,21 @@ def exvp_scalar(x, y, x0, y0, c1, c2):
     # conversion factor (in radian/pixel)
     factor = 0.1944 * np.pi/(180.0*3600)
     # distance from image center (pixels)
-    r_pix = np.sqrt((x - x0)**2 + (y - y0)**2)
+    r_pix = np.sqrt((x - x0*1000)**2 + (y - y0*1000)**2)
     # distance from imagen center (radians)
     r_rad = factor * r_pix
     # radial distortion: this number is 1.0 for r=0 and increases
     # slightly (reaching values around 1.033) for r~sqrt(2)*1024
     # (the distance to the corner of the detector measured from the
     # center)
-    rdist = (1 + c1 * r_rad**2 + c2 * r_rad**4)
+    rdist = (1 + c1 * 1.0E4 * r_rad**2 + c2 * 1.0E9 * r_rad**4)
     # angle measured from the Y axis towards the X axis
-    theta = np.arctan((x - x0)/(y - y0))
-    if y < y0:
+    theta = np.arctan((x - x0*1000)/(y - y0*1000))
+    if y < y0*1000:
         theta = theta - np.pi
     # distorted coordinates
-    xdist = (rdist * r_pix * np.sin(theta)) + x0
-    ydist = (rdist * r_pix * np.cos(theta)) + y0
+    xdist = (rdist * r_pix * np.sin(theta)) + x0*1000
+    ydist = (rdist * r_pix * np.cos(theta)) + y0*1000
     return xdist, ydist
 
 
@@ -170,6 +172,7 @@ def exvp(x, y, x0, y0, c1, c2):
         Distorted coordinates.
 
     """
+
     if all([np.isscalar(x), np.isscalar(y)]):
         xdist, ydist = exvp_scalar(x, y, x0=x0, y0=y0, c1=c1, c2=c2)
         return xdist, ydist
@@ -185,7 +188,7 @@ def exvp(x, y, x0, y0, c1, c2):
         return np.array(xdist), np.array(ydist)
 
 
-def expected_distorted_boundaries(islitlet, slit_height, slit_gap,
+def expected_distorted_boundaries(islitlet, border, slit_height, slit_gap,
                                   y_baseline, x0, y0, c1, c2,
                                   numpts, deg,
                                   debugplot=0):
@@ -193,23 +196,68 @@ def expected_distorted_boundaries(islitlet, slit_height, slit_gap,
 
     """
 
+    if border not in ['lower', 'upper', 'both']:
+        raise ValueError('Unexpected border:', border)
+
     xp = np.linspace(1, NAXIS1_EMIR, numpts)
     slit_dist = slit_height + slit_gap
 
     # y-coordinates at x=1024.5
     ybottom = y_baseline + (islitlet - 1) * slit_dist
     ytop = ybottom + slit_height
-    # undistorted lower and upper slitlet boundaries
-    yp_bottom = np.ones(numpts) * ybottom
-    yp_top = np.ones(numpts) * ytop
-    # distorted lower boundary
-    xdist, ydist = exvp(xp, yp_bottom, x0=x0, y0=y0, c1=c1, c2=c2)
-    poly_lower, dum = polfit_residuals(xdist, ydist, deg, debugplot=debugplot)
-    # distorted upper boundary
-    xdist, ydist = exvp(xp, yp_top, x0=x0, y0=y0, c1=c1, c2=c2)
-    poly_upper, dum = polfit_residuals(xdist, ydist, deg, debugplot=debugplot)
 
-    return poly_lower, poly_upper
+    # avoid PyCharm warning (variables might by referenced before assignment)
+    poly_lower = poly_upper = None  # avoid PyCharm warning
+
+    if border in ['lower', 'both']:
+        # undistorted boundary
+        yp_bottom = np.ones(numpts) * ybottom
+        # distorted boundary
+        xdist, ydist = exvp(xp, yp_bottom, x0=x0, y0=y0, c1=c1, c2=c2)
+        poly_lower, dum = polfit_residuals(xdist, ydist, deg,
+                                           debugplot=debugplot)
+    if border in ['upper', 'both']:
+        # undistorted boundary
+        yp_top = np.ones(numpts) * ytop
+        # distorted boundary
+        xdist, ydist = exvp(xp, yp_top, x0=x0, y0=y0, c1=c1, c2=c2)
+        poly_upper, dum = polfit_residuals(xdist, ydist, deg,
+                                           debugplot=debugplot)
+
+    if border == 'lower':
+        return poly_lower
+    elif border == 'upper':
+        return poly_upper
+    else:
+        return poly_lower, poly_upper
+
+
+def fun1_dist_polynomials(params, islitlet, border, poly_measured, xdata,
+                          x0, y0, c1, c2):
+    # read parameters
+    slit_height, slit_gap, y_baseline = params
+    # expected boundary using provided parameters
+    poly_expected = expected_distorted_boundaries(
+        islitlet, border, slit_height, slit_gap, y_baseline,
+        x0, y0, c1, c2, numpts=101, deg=7, debugplot=0)
+    # distance between measured and expected polynomials
+    poly_diff2 = (poly_measured - poly_expected) ** 2
+    dist = np.sqrt(np.sum(poly_diff2(xdata)) / len(xdata))
+    return dist
+
+
+def fun2_dist_polynomials(params, islitlet, border, poly_measured, xdata,
+                          slit_height, slit_gap, y_baseline):
+    # read parameters
+    x0, y0, c1, c2 = params
+    # expected boundary using provided parameters
+    poly_expected = expected_distorted_boundaries(
+        islitlet, border, slit_height, slit_gap, y_baseline,
+        x0, y0, c1, c2, numpts=101, deg=7, debugplot=0)
+    # distance between measured and expected polynomials
+    poly_diff2 = (poly_measured - poly_expected) ** 2
+    dist = np.sqrt(np.sum(poly_diff2(xdata)) / len(xdata))
+    return dist
 
 
 def main(args=None):
@@ -228,18 +276,22 @@ def main(args=None):
 
     integrity_check(bounddict)
 
-    slit_height = 33.5
-    slit_gap = 3.95
-    y_baseline = 2  # 1(J-J), 7(H-H), 3(K-Ksp), -85(LR-HK), -87(LR-YJ)
+    slit_height = 33.5  # 33.437  # 33.441  # 33.453  # 33.462  # 33.475
+    slit_gap = 4.0  # 4.015  # 4.006  # 3.997  # 3.988  # 3.979
+    # 7(H-H), 3(K-Ksp), -85(LR-HK), -87(LR-YJ)
+    y_baseline = 2.0  # 2.347  # 2.295  # 2.244  # 2.195  # 2.147
     if bounddict['tags']['grism'] == 'J' and \
         bounddict['tags']['filter'] == 'J':
-        x0 = 1024.5
-        y0 = 1024.5
-        c1 = 14606.7
-        c2 = 1739716115.1
+        x0 = 1.0245  # in units of 1E3
+        y0 = 1.0245  # in units of 1E3
+        c1 = 1.46067  # in units of 1E4
+        c2 = 1.7397161151  # in units of 1E9
     else:
         raise ValueError("Distortion parameters are not available for this "
                          "combination of grism and filter")
+    slit_height_fitted = []
+    slit_gap_fitted = []
+    y_baseline_fitted = []
 
     if args.debugplot % 10 != 0:
         fig = plt.figure()
@@ -259,54 +311,94 @@ def main(args=None):
         print('>>> Reading slitlet ', islitlet)
         # expected boundaries
         pol_lower_expected, pol_upper_expected = expected_distorted_boundaries(
-            islitlet, slit_height, slit_gap, y_baseline, x0, y0, c1, c2,
-            numpts=101, deg=7, debugplot=0)
+            islitlet, 'both', slit_height, slit_gap, y_baseline,
+            x0, y0, c1, c2, numpts=101, deg=7, debugplot=0)
         read_dateobs = bounddict['contents'][tmp_slitlet].keys()
         read_dateobs.sort()
         for tmp_dateobs in read_dateobs:
             print('...', tmp_dateobs)
             tmp_dict = bounddict['contents'][tmp_slitlet][tmp_dateobs]
             # lower boundary
-            pol_lower_bound = np.polynomial.Polynomial(
+            pol_lower_measured = np.polynomial.Polynomial(
                 tmp_dict['boundary_coef_lower']
             )
             xmin_lower_bound = tmp_dict['boundary_xmin_lower']
             xmax_lower_bound = tmp_dict['boundary_xmax_lower']
             xdum_lower = np.arange(xmin_lower_bound, xmax_lower_bound+1)
-            ydum_lower_measured = pol_lower_bound(xdum_lower)
+            ydum_lower_measured = pol_lower_measured(xdum_lower)
             ydum_lower_expected = pol_lower_expected(xdum_lower)
             # upper boundary
-            pol_upper_bound = np.polynomial.Polynomial(
+            pol_upper_measured = np.polynomial.Polynomial(
                 tmp_dict['boundary_coef_upper']
             )
             xmin_upper_bound = tmp_dict['boundary_xmin_upper']
             xmax_upper_bound = tmp_dict['boundary_xmax_upper']
             xdum_upper = np.arange(xmin_upper_bound, xmax_upper_bound + 1)
-            ydum_upper_measured = pol_upper_bound(xdum_upper)
+            ydum_upper_measured = pol_upper_measured(xdum_upper)
             ydum_upper_expected = pol_upper_expected(xdum_upper)
+            # compute optimal parameters for current islitlet
+            guess = slit_height, slit_gap, y_baseline
+            print(78*'-')
+            params_lower = optimize.fmin(
+                fun1_dist_polynomials, guess,
+                args=(islitlet, 'lower', pol_lower_measured, xdum_lower,
+                      x0, y0, c1, c2),
+                xtol=0.000001, ftol=0.000001, maxiter=10000,
+            )
+            slit_height_fitted.append(params_lower[0])
+            slit_gap_fitted.append(params_lower[1])
+            y_baseline_fitted.append(params_lower[2])
+            print('... params (lower):', params_lower)
+            params_upper = optimize.fmin(
+                fun1_dist_polynomials, guess,
+                args=(islitlet, 'upper', pol_upper_measured, xdum_upper,
+                      x0, y0, c1, c2),
+                xtol=0.000001, ftol=0.000001, maxiter=10000,
+            )
+            slit_height_fitted.append(params_upper[0])
+            slit_gap_fitted.append(params_upper[1])
+            y_baseline_fitted.append(params_upper[2])
+            # compute fitted boundaries
+            pol_lower_expected_fit= expected_distorted_boundaries(
+                islitlet, 'lower',
+                params_lower[0], params_lower[1], params_lower[2],
+                x0, y0, c1, c2, numpts=101, deg=7, debugplot=0)
+            ydum_lower_expected_fit = pol_lower_expected_fit(xdum_lower)
+            pol_upper_expected_fit= expected_distorted_boundaries(
+                islitlet, 'upper',
+                params_upper[0], params_upper[1], params_upper[2],
+                x0, y0, c1, c2, numpts=101, deg=7, debugplot=0)
+            ydum_upper_expected_fit = pol_upper_expected_fit(xdum_upper)
+            print('... params (upper):', params_upper)
             if args.debugplot % 10 != 0:
                 tmpcolor = micolors[islitlet % 2]
                 tmpcolor_exp = micolors_exp[islitlet % 2]
                 plt.plot(xdum_lower, ydum_lower_measured, tmpcolor+'-')
                 plt.plot(xdum_lower, ydum_lower_expected, tmpcolor_exp+'--')
+                plt.plot(xdum_lower, ydum_lower_expected_fit, tmpcolor_exp+':')
                 plt.plot(xdum_upper, ydum_upper_measured, tmpcolor + '-')
                 plt.plot(xdum_upper, ydum_upper_expected, tmpcolor_exp + '--')
-                yc_lower = pol_lower_bound(NAXIS1_EMIR / 2 + 0.5)
-                yc_upper = pol_upper_bound(NAXIS1_EMIR/2 + 0.5)
+                plt.plot(xdum_upper, ydum_upper_expected_fit, tmpcolor_exp+':')
+                yc_lower = pol_lower_measured(NAXIS1_EMIR / 2 + 0.5)
+                yc_upper = pol_upper_measured(NAXIS1_EMIR / 2 + 0.5)
                 ax.text(NAXIS1_EMIR / 2 + 0.5, (yc_lower + yc_upper) / 2,
                         str(islitlet), fontsize=10, va='center', ha='center',
                         bbox=dict(boxstyle="round,pad=0.1", fc="white", ec="grey"),
                         color=tmpcolor, fontweight='bold', backgroundcolor='white')
-                for xp, yp1, yp2 in zip(
-                        xdum_lower[::50],
-                        ydum_lower_measured[::50],
-                        ydum_lower_expected[::50]):
-                    plt.plot([xp, xp], [yp1, yp2], 'y-')
-            # compute optimal parameters for current islitlet
-            # seguir aqui
-            # seguir aqui
 
     pause_debugplot(debugplot=args.debugplot, pltshow=True)
+
+    slit_height_fitted = np.array(slit_height_fitted)
+    slit_gap_fitted = np.array(slit_gap_fitted)
+    y_baseline_fitted = np.array(y_baseline_fitted)
+
+    print(78 * '-')
+    print('>>> Median values: ', np.median(slit_height_fitted),
+          np.median(slit_gap_fitted), np.median(y_baseline_fitted))
+
+    ximplot(slit_height_fitted, title='slit_height', debugplot=12)
+    ximplot(slit_gap_fitted, title='slit_gap', debugplot=12)
+    ximplot(y_baseline_fitted, title='y_baseline', debugplot=12)
 
 
 if __name__ == "__main__":
