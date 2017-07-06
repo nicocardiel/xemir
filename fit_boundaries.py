@@ -232,7 +232,7 @@ def expected_distorted_boundaries(islitlet, border, slit_height, slit_gap,
         return poly_lower, poly_upper
 
 
-def fun_residuals(params, bounddict):
+def fun_residuals(params, bounddict, numresolution):
     # read individual parameters
     slit_height = params['slit_height']
     slit_gap = params['slit_gap']
@@ -243,6 +243,7 @@ def fun_residuals(params, bounddict):
     c2 = params['c2']
 
     residuals = 0.0
+    nsummed = 0
 
     read_slitlets = bounddict['contents'].keys()
     read_slitlets.sort()
@@ -252,7 +253,7 @@ def fun_residuals(params, bounddict):
         poly_lower_expected, poly_upper_expected = \
             expected_distorted_boundaries(
                 islitlet, 'both', slit_height, slit_gap, y_baseline,
-                x0, y0, c1, c2, numpts=101, deg=7, debugplot=0
+                x0, y0, c1, c2, numpts=numresolution, deg=7, debugplot=0
             )
         # print(79 * '-')
         # print('>>> Reading slitlet ', islitlet)
@@ -267,21 +268,26 @@ def fun_residuals(params, bounddict):
             )
             xmin_lower_bound = tmp_dict['boundary_xmin_lower']
             xmax_lower_bound = tmp_dict['boundary_xmax_lower']
-            xdum_lower = np.arange(xmin_lower_bound, xmax_lower_bound+1)
+            xdum_lower = np.linspace(xmin_lower_bound, xmax_lower_bound,
+                                     num=numresolution)
             # distance between expected and measured polynomials
             poly_diff = poly_lower_expected - poly_lower_measured
             residuals += np.sum(poly_diff(xdum_lower)**2)
+            nsummed += numresolution
             # upper boundary
             poly_upper_measured = np.polynomial.Polynomial(
                 tmp_dict['boundary_coef_upper']
             )
             xmin_upper_bound = tmp_dict['boundary_xmin_upper']
             xmax_upper_bound = tmp_dict['boundary_xmax_upper']
-            xdum_upper = np.arange(xmin_upper_bound, xmax_upper_bound + 1)
+            xdum_upper = np.linspace(xmin_upper_bound, xmax_upper_bound,
+                                     num=numresolution)
             # distance between expected and measured polynomials
             poly_diff = poly_upper_expected - poly_upper_measured
-            residuals += np.sum(poly_diff(xdum_lower)**2)
+            residuals += np.sum(poly_diff(xdum_upper)**2)
+            nsummed += numresolution
 
+    residuals = np.sqrt(residuals/nsummed)
     print('>>> residuals:', residuals)
     return residuals
 
@@ -291,6 +297,9 @@ def main(args=None):
     parser.add_argument("boundict",
                         help="JSON boundary file",
                         type=argparse.FileType('r'))
+    parser.add_argument("--numresolution",
+                        help="Number of points/boundary (default=101)",
+                        type=int, default=101)
     parser.add_argument("--debugplot",
                         help="Integer indicating plotting/debugging" +
                              " (default=0)",
@@ -326,100 +335,15 @@ def main(args=None):
     params.add('c1', value=c1, vary=False)
     params.add('c2', value=c2, vary=True, min=2, max=-6)
     result = minimize(fun_residuals, params, method='nelder',
-                      args=(bounddict,))
+                      args=(bounddict, args.numresolution))
     result.params.pretty_print()
-
-    # read_slitlets = bounddict['contents'].keys()
-    # read_slitlets.sort()
-    # for tmp_slitlet in read_slitlets:
-    #     islitlet = int(tmp_slitlet[7:])
-    #     print()
-    #     print(79 * '-')
-    #     print('>>> Reading slitlet ', islitlet)
-    #     read_dateobs = bounddict['contents'][tmp_slitlet].keys()
-    #     read_dateobs.sort()
-    #     for tmp_dateobs in read_dateobs:
-    #         print('...', tmp_dateobs)
-    #         tmp_dict = bounddict['contents'][tmp_slitlet][tmp_dateobs]
-    #         # lower boundary
-    #         pol_lower_measured = np.polynomial.Polynomial(
-    #             tmp_dict['boundary_coef_lower']
-    #         )
-    #         xmin_lower_bound = tmp_dict['boundary_xmin_lower']
-    #         xmax_lower_bound = tmp_dict['boundary_xmax_lower']
-    #         xdum_lower = np.arange(xmin_lower_bound, xmax_lower_bound+1)
-    #         ydum_lower_measured = pol_lower_measured(xdum_lower)
-    #         # upper boundary
-    #         pol_upper_measured = np.polynomial.Polynomial(
-    #             tmp_dict['boundary_coef_upper']
-    #         )
-    #         xmin_upper_bound = tmp_dict['boundary_xmin_upper']
-    #         xmax_upper_bound = tmp_dict['boundary_xmax_upper']
-    #         xdum_upper = np.arange(xmin_upper_bound, xmax_upper_bound + 1)
-    #         ydum_upper_measured = pol_upper_measured(xdum_upper)
-    #         # compute optimal parameters for current islitlet
-    #         params = Parameters()
-    #         params.add('slit_height', value=slit_height, vary=True,
-    #                    min=30, max=40)
-    #         params.add('slit_gap', value=slit_gap, vary=True,
-    #                    min=2, max=6)
-    #         params.add('y_baseline', value=y_baseline, vary=True,
-    #                    min=-3, max=7)
-    #         params.add('x0', value=x0, vary=False)
-    #         params.add('y0', value=y0, vary=False)
-    #         params.add('c1', value=c1, vary=False)
-    #         params.add('c2', value=c2, vary=True,
-    #                    min=2, max=-6)
-    #         print(39 * '- ' + '-')
-    #         result = minimize(residuals_polynomials, params,
-    #                           method='nelder',
-    #                           args=(xdum_lower[::5], islitlet, 'lower',
-    #                                 pol_lower_measured))
-    #         print('... params (lower):')
-    #         result.params.pretty_print()
-    #         slit_height_fitted = result.params['slit_height'].value
-    #         slit_gap_fitted = result.params['slit_gap'].value
-    #         y_baseline_fitted = result.params['y_baseline'].value
-    #         x0_fitted = result.params['x0'].value
-    #         y0_fitted = result.params['y0'].value
-    #         c1_fitted = result.params['c1'].value
-    #         c2_fitted = result.params['c2'].value
-    #         pol_lower_expected_fit = expected_distorted_boundaries(
-    #             islitlet, 'lower',
-    #             slit_height_fitted, slit_gap_fitted, y_baseline_fitted,
-    #             x0_fitted, y0_fitted, c1_fitted, c2_fitted,
-    #             numpts=101, deg=7, debugplot=0)
-    #         ydum_lower_expected_fit = pol_lower_expected_fit(xdum_lower)
-    #         result = minimize(residuals_polynomials, params,
-    #                           method='nelder',
-    #                           args=(xdum_upper[::5], islitlet, 'upper',
-    #                                 pol_upper_measured))
-    #         print('... params (upper):')
-    #         result.params.pretty_print()
-    #         slit_height_fitted = result.params['slit_height'].value
-    #         slit_gap_fitted = result.params['slit_gap'].value
-    #         y_baseline_fitted = result.params['y_baseline'].value
-    #         x0_fitted = result.params['x0'].value
-    #         y0_fitted = result.params['y0'].value
-    #         c1_fitted = result.params['c1'].value
-    #         c2_fitted = result.params['c2'].value
-    #         pol_upper_expected_fit= expected_distorted_boundaries(
-    #             islitlet, 'upper',
-    #             slit_height_fitted, slit_gap_fitted, y_baseline_fitted,
-    #             x0_fitted, y0_fitted, c1_fitted, c2_fitted,
-    #             numpts=101, deg=7, debugplot=0)
-    #         ydum_upper_expected_fit = pol_upper_expected_fit(xdum_upper)
-    #         # if args.debugplot % 10 != 0:
-    #         #     tmpcolor = micolors[islitlet % 2]
-    #         #     tmpcolor_exp = micolors_exp[islitlet % 2]
-    #         #     plt.plot(xdum_lower, ydum_lower_measured, tmpcolor+'-')
-    #         #     plt.plot(xdum_lower, ydum_lower_expected, tmpcolor_exp+'--')
-    #         #     plt.plot(xdum_lower, ydum_lower_expected_fit, tmpcolor_exp+':')
-    #         #     plt.plot(xdum_upper, ydum_upper_measured, tmpcolor + '-')
-    #         #     plt.plot(xdum_upper, ydum_upper_expected, tmpcolor_exp + '--')
-    #         #     plt.plot(xdum_upper, ydum_upper_expected_fit, tmpcolor_exp+':')
-    #         #     yc_lower = pol_lower_measured(NAXIS1_EMIR / 2 + 0.5)
-    #         #     yc_upper = pol_upper_measured(NAXIS1_EMIR / 2 + 0.5)
+    slit_height_fitted = result.params['slit_height'].value
+    slit_gap_fitted = result.params['slit_gap'].value
+    y_baseline_fitted = result.params['y_baseline'].value
+    x0_fitted = result.params['x0'].value
+    y0_fitted = result.params['y0'].value
+    c1_fitted = result.params['c1'].value
+    c2_fitted = result.params['c2'].value
 
     if args.debugplot % 10 != 0:
         fig = plt.figure()
@@ -430,10 +354,10 @@ def main(args=None):
         ax.set_xlabel('Y axis (from 1 to NAXIS2)')
         ax.set_title(args.boundict.name)
         micolors = ['r', 'b']
-        micolors_exp = ['m', 'c']
+        micolors_fitted = ['m', 'c']
         for islitlet in range(1, EMIR_NBARS + 1):
             tmpcolor = micolors[islitlet % 2]
-            tmpcolor_exp = micolors_exp[islitlet % 2]
+            tmpcolor_fitted = micolors_fitted[islitlet % 2]
             # expected boundaries with initial parameters
             pol_lower_expected, pol_upper_expected = \
                 expected_distorted_boundaries(
@@ -445,6 +369,37 @@ def main(args=None):
             plt.plot(xdum, ydum, tmpcolor + '--')
             ydum = pol_upper_expected(xdum)
             plt.plot(xdum, ydum, tmpcolor + '--')
+            # fitted boundaries with adjusted parameters
+            pol_lower_fitted, pol_upper_fitted = \
+                expected_distorted_boundaries(
+                    islitlet, 'both',
+                    slit_height_fitted, slit_gap_fitted, y_baseline_fitted,
+                    x0_fitted, y0_fitted, c1_fitted, c2_fitted,
+                    numpts=101, deg=7, debugplot=0
+                )
+            ydum = pol_lower_fitted(xdum)
+            plt.plot(xdum, ydum, tmpcolor_fitted + ':')
+            ydum = pol_upper_fitted(xdum)
+            plt.plot(xdum, ydum, tmpcolor_fitted + ':')
+            # measured boundaries
+            tmp_slitlet = 'slitlet' + str(islitlet).zfill(2)
+            if tmp_slitlet in bounddict['contents'].keys():
+                read_dateobs = bounddict['contents'][tmp_slitlet].keys()
+                read_dateobs.sort()
+                for tmp_dateobs in read_dateobs:
+                    tmp_dict = bounddict['contents'][tmp_slitlet][tmp_dateobs]
+                    # lower boundary
+                    pol_lower_measured = np.polynomial.Polynomial(
+                        tmp_dict['boundary_coef_lower']
+                    )
+                    ydum = pol_lower_measured(xdum)
+                    plt.plot(xdum, ydum, tmpcolor + '-')
+                    pol_upper_measured = np.polynomial.Polynomial(
+                        tmp_dict['boundary_coef_upper']
+                    )
+                    ydum = pol_upper_measured(xdum)
+                    plt.plot(xdum, ydum, tmpcolor + '-')
+            # slitlet label
             yc_lower = pol_lower_expected(NAXIS1_EMIR / 2 + 0.5)
             yc_upper = pol_upper_expected(NAXIS1_EMIR / 2 + 0.5)
             ax.text(NAXIS1_EMIR / 2 + 0.5, (yc_lower + yc_upper) / 2,
