@@ -4,13 +4,15 @@ from __future__ import print_function
 import argparse
 from datetime import datetime
 import json
+from lmfit import minimize, Parameters, minimizer
 import matplotlib.pyplot as plt
 import numpy as np
-from lmfit import minimize, Parameters
+import pickle
 
 from numina.array.display.polfit_residuals import polfit_residuals
 from numina.array.display.pause_debugplot import pause_debugplot
 from numina.array.display.ximplot import ximplot
+from numina.array import stats
 from emirdrp.core import EMIR_NBARS
 
 from emir_definitions import NAXIS1_EMIR
@@ -215,11 +217,11 @@ def expected_distorted_boundaries(islitlet, border, params,
         raise ValueError('Unexpected border:', border)
 
     xp = np.linspace(1, NAXIS1_EMIR, numpts)
-    slit_dist = slit_height + slit_gap
+    slit_dist = slit_height * 10 + slit_gap
 
     # y-coordinates at x=1024.5
     ybottom = y_baseline + (islitlet - 1) * slit_dist
-    ytop = ybottom + slit_height
+    ytop = ybottom + slit_height * 10
 
     # avoid PyCharm warning (variables might by referenced before assignment)
     poly_lower = poly_upper = None  # avoid PyCharm warning
@@ -296,9 +298,10 @@ def fun_residuals(params, bounddict, numresolution, islitmin, islitmax):
                 residuals += np.sum(poly_diff(xdum_upper)**2)
                 nsummed += numresolution
 
-    residuals = np.sqrt(residuals/nsummed)
-    print('>>> residuals:', residuals)
-    params.pretty_print()
+    if nsummed > 0:
+        residuals = np.sqrt(residuals/nsummed)
+    # print('>>> residuals:', residuals)
+    # params.pretty_print()
     return residuals
 
 
@@ -484,23 +487,23 @@ def main(args=None):
     save_boundaries_from_bounddict_ds9(bounddict, 'ds9_bound.reg')
 
     # initial parameters
-    slit_height = 33.88  # 33.5
-    slit_gap = 3.584  # 4.0
+    slit_height = 3.390  # in units of 1E1
+    slit_gap = 3.578
     # 7(H-H), 3(K-Ksp), -85(LR-HK), -87(LR-YJ)
-    y_baseline = 1.441  # 2.0
-    theta0 = 1.0  # in units of 1E-3 radians
+    y_baseline = 1.323
+    theta0 = 0.6503  # in units of 1E-3 radians
     if bounddict['tags']['grism'] == 'J' and \
         bounddict['tags']['filter'] == 'J':
         x0 = 1.0245  # in units of 1E3
         y0 = 1.0245  # in units of 1E3
-        c2 = 1.241  # in units of 1E4
-        c4 = 1.744  # in units of 1E9
+        c2 = 1.234   # in units of 1E4
+        c4 = 1.786   # in units of 1E9
     else:
         raise ValueError("Distortion parameters are not available for this "
                          "combination of grism and filter")
 
     params = Parameters()
-    params.add('slit_height', value=slit_height, vary=True, min=30, max=40)
+    params.add('slit_height', value=slit_height, vary=True, min=3, max=4)
     params.add('slit_gap', value=slit_gap, vary=True, min=2, max=6)
     params.add('y_baseline', value=y_baseline, vary=True, min=-3, max=7)
     params.add('x0', value=x0, vary=True)
@@ -509,27 +512,57 @@ def main(args=None):
     params.add('c4', value=c4, vary=True)
     params.add('theta0', value=theta0, vary=True)
 
-    islitmin=2
-    islitmax=2  # EMIR_NBARS
-    result = minimize(fun_residuals, params, method='nelder',
-                      args=(bounddict, args.numresolution,
-                            islitmin, islitmax))
-    save_boundaries_from_params_ds9(result.params, 'ds9_param.reg')
+    islitlet_min = 2
+    islitlet_max = 54
+    array_of_results = np.zeros((islitlet_max - islitlet_min + 1, 2),
+                                dtype=minimizer.MinimizerResult)
+    list_slitlets = range(islitlet_min, islitlet_max + 1)
+    for idum, islitlet in enumerate(list_slitlets):
+        result = minimize(fun_residuals, params, method='nelder',
+                          args=(bounddict, args.numresolution,
+                                islitlet, islitlet))
+        # save_boundaries_from_params_ds9(result.params, 'ds9_param.reg')
+        print('\n>>> islitlet, chisqr', islitlet, result.chisqr)
+        result.params.pretty_print()
 
-    if args.debugplot % 10 != 0:
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.set_xlim([-0.5, NAXIS1_EMIR + 0.5])
-        ax.set_ylim([-0.5, NAXIS2_EMIR + 0.5])
-        ax.set_xlabel('X axis (from 1 to NAXIS1)')
-        ax.set_xlabel('Y axis (from 1 to NAXIS2)')
-        ax.set_title(args.boundict.name)
-        overplot_boundaries_from_bounddict(bounddict, ['r', 'b'])
-        # overplot_boundaries_from_params(ax, params, ['r', 'b'],
-        #                                 linetype=':')
-        overplot_boundaries_from_params(ax, result.params, ['m', 'c'],
-                                        linetype='--')
-        pause_debugplot(debugplot=args.debugplot, pltshow=True)
+        array_of_results[idum, 0] = islitlet
+        array_of_results[idum, 1] = result
+
+    pickle.dump(array_of_results, open('array_of_results.p', 'wb') )
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    ax.set_xlim([0, EMIR_NBARS + 1])
+    xplot = array_of_results[:, 0]
+    for vardum in ['chisqr', 'slit_height', 'slit_gap', 'y_baseline',
+                   'x0', 'y0', 'c2', 'c4', 'theta0']:
+        if vardum == 'chisqr':
+            yplot = [array_of_results[idum, 1].chisqr
+                     for idum in range(array_of_results.shape[0])]
+        else:
+            yplot = [array_of_results[idum, 1].params[vardum].value
+                     for idum in range(array_of_results.shape[0])]
+        yplot = np.array(yplot)
+        plt.plot(xplot, yplot, 'o', label=vardum)
+        print('\n>>> ', vardum)
+        stats.summary(yplot, debug=True)
+    plt.legend()
+    pause_debugplot(debugplot=12, pltshow=True)
+
+    # if args.debugplot % 10 != 0:
+    #     fig = plt.figure()
+    #     ax = fig.add_subplot(111)
+    #     ax.set_xlim([-0.5, NAXIS1_EMIR + 0.5])
+    #     ax.set_ylim([-0.5, NAXIS2_EMIR + 0.5])
+    #     ax.set_xlabel('X axis (from 1 to NAXIS1)')
+    #     ax.set_xlabel('Y axis (from 1 to NAXIS2)')
+    #     ax.set_title(args.boundict.name)
+    #     overplot_boundaries_from_bounddict(bounddict, ['r', 'b'])
+    #     # overplot_boundaries_from_params(ax, params, ['r', 'b'],
+    #     #                                 linetype=':')
+    #     overplot_boundaries_from_params(ax, result.params, ['m', 'c'],
+    #                                     linetype='--')
+    #     pause_debugplot(debugplot=args.debugplot, pltshow=True)
 
 
 if __name__ == "__main__":
