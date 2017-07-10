@@ -234,13 +234,13 @@ def expected_distorted_boundaries(islitlet, border, slit_height, slit_gap,
 
 def fun_residuals(params, bounddict, numresolution):
     # read individual parameters
-    slit_height = params['slit_height']
-    slit_gap = params['slit_gap']
-    y_baseline = params['y_baseline']
-    x0 = params['x0']
-    y0 = params['y0']
-    c1 = params['c1']
-    c2 = params['c2']
+    slit_height = params['slit_height'].value
+    slit_gap = params['slit_gap'].value
+    y_baseline = params['y_baseline'].value
+    x0 = params['x0'].value
+    y0 = params['y0'].value
+    c1 = params['c1'].value
+    c2 = params['c2'].value
 
     residuals = 0.0
     nsummed = 0
@@ -292,6 +292,63 @@ def fun_residuals(params, bounddict, numresolution):
     return residuals
 
 
+def overplot_boundaries_from_bounddict(bounddict, micolors, linetype='-'):
+    for islitlet in range(1, EMIR_NBARS + 1):
+        tmpcolor = micolors[islitlet % 2]
+
+        tmp_slitlet = 'slitlet' + str(islitlet).zfill(2)
+        if tmp_slitlet in bounddict['contents'].keys():
+            read_dateobs = bounddict['contents'][tmp_slitlet].keys()
+            read_dateobs.sort()
+            for tmp_dateobs in read_dateobs:
+                tmp_dict = bounddict['contents'][tmp_slitlet][tmp_dateobs]
+                # lower boundary
+                pol_lower_measured = np.polynomial.Polynomial(
+                    tmp_dict['boundary_coef_lower']
+                )
+                xdum = np.linspace(1, NAXIS1_EMIR, num=NAXIS1_EMIR)
+                ydum = pol_lower_measured(xdum)
+                plt.plot(xdum, ydum, tmpcolor + linetype)
+                pol_upper_measured = np.polynomial.Polynomial(
+                    tmp_dict['boundary_coef_upper']
+                )
+                ydum = pol_upper_measured(xdum)
+                plt.plot(xdum, ydum, tmpcolor + linetype)
+
+
+def overplot_boundaries_from_params(ax, params, micolors, linetype='--'):
+    # read individual parameters
+    slit_height = params['slit_height'].value
+    slit_gap = params['slit_gap'].value
+    y_baseline = params['y_baseline'].value
+    x0 = params['x0'].value
+    y0 = params['y0'].value
+    c1 = params['c1'].value
+    c2 = params['c2'].value
+
+    for islitlet in range(1, EMIR_NBARS + 1):
+        tmpcolor = micolors[islitlet % 2]
+        pol_lower_expected, pol_upper_expected = \
+            expected_distorted_boundaries(
+                islitlet, 'both', slit_height, slit_gap, y_baseline,
+                x0, y0, c1, c2, numpts=101, deg=7, debugplot=0
+            )
+        xdum = np.linspace(1, NAXIS1_EMIR, num=NAXIS1_EMIR)
+        ydum = pol_lower_expected(xdum)
+        plt.plot(xdum, ydum, tmpcolor + linetype)
+        ydum = pol_upper_expected(xdum)
+        plt.plot(xdum, ydum, tmpcolor + linetype)
+        # slitlet label
+        yc_lower = pol_lower_expected(NAXIS1_EMIR / 2 + 0.5)
+        yc_upper = pol_upper_expected(NAXIS1_EMIR / 2 + 0.5)
+        ax.text(NAXIS1_EMIR / 2 + 0.5, (yc_lower + yc_upper) / 2,
+                str(islitlet), fontsize=10, va='center', ha='center',
+                bbox=dict(boxstyle="round,pad=0.1",
+                          fc="white", ec="grey"),
+                color=tmpcolor, fontweight='bold',
+                backgroundcolor='white')
+
+
 def main(args=None):
     parser = argparse.ArgumentParser(prog='fit_boundaries')
     parser.add_argument("boundict",
@@ -334,81 +391,24 @@ def main(args=None):
     params.add('y0', value=y0, vary=False)
     params.add('c1', value=c1, vary=False)
     params.add('c2', value=c2, vary=True, min=2, max=-6)
+
     result = minimize(fun_residuals, params, method='nelder',
                       args=(bounddict, args.numresolution))
     result.params.pretty_print()
-    slit_height_fitted = result.params['slit_height'].value
-    slit_gap_fitted = result.params['slit_gap'].value
-    y_baseline_fitted = result.params['y_baseline'].value
-    x0_fitted = result.params['x0'].value
-    y0_fitted = result.params['y0'].value
-    c1_fitted = result.params['c1'].value
-    c2_fitted = result.params['c2'].value
 
     if args.debugplot % 10 != 0:
         fig = plt.figure()
         ax = fig.add_subplot(111)
-        ax.set_xlim([-0.5, NAXIS1_EMIR+0.5])
-        ax.set_ylim([-0.5, NAXIS2_EMIR+0.5])
+        ax.set_xlim([-0.5, NAXIS1_EMIR + 0.5])
+        ax.set_ylim([-0.5, NAXIS2_EMIR + 0.5])
         ax.set_xlabel('X axis (from 1 to NAXIS1)')
         ax.set_xlabel('Y axis (from 1 to NAXIS2)')
         ax.set_title(args.boundict.name)
-        micolors = ['r', 'b']
-        micolors_fitted = ['m', 'c']
-        for islitlet in range(1, EMIR_NBARS + 1):
-            tmpcolor = micolors[islitlet % 2]
-            tmpcolor_fitted = micolors_fitted[islitlet % 2]
-            # expected boundaries with initial parameters
-            pol_lower_expected, pol_upper_expected = \
-                expected_distorted_boundaries(
-                    islitlet, 'both', slit_height, slit_gap, y_baseline,
-                    x0, y0, c1, c2, numpts=101, deg=7, debugplot=0
-                )
-            xdum = np.linspace(1, NAXIS1_EMIR, num=NAXIS1_EMIR)
-            ydum = pol_lower_expected(xdum)
-            plt.plot(xdum, ydum, tmpcolor + '--')
-            ydum = pol_upper_expected(xdum)
-            plt.plot(xdum, ydum, tmpcolor + '--')
-            # fitted boundaries with adjusted parameters
-            pol_lower_fitted, pol_upper_fitted = \
-                expected_distorted_boundaries(
-                    islitlet, 'both',
-                    slit_height_fitted, slit_gap_fitted, y_baseline_fitted,
-                    x0_fitted, y0_fitted, c1_fitted, c2_fitted,
-                    numpts=101, deg=7, debugplot=0
-                )
-            ydum = pol_lower_fitted(xdum)
-            plt.plot(xdum, ydum, tmpcolor_fitted + ':')
-            ydum = pol_upper_fitted(xdum)
-            plt.plot(xdum, ydum, tmpcolor_fitted + ':')
-            # measured boundaries
-            tmp_slitlet = 'slitlet' + str(islitlet).zfill(2)
-            if tmp_slitlet in bounddict['contents'].keys():
-                read_dateobs = bounddict['contents'][tmp_slitlet].keys()
-                read_dateobs.sort()
-                for tmp_dateobs in read_dateobs:
-                    tmp_dict = bounddict['contents'][tmp_slitlet][tmp_dateobs]
-                    # lower boundary
-                    pol_lower_measured = np.polynomial.Polynomial(
-                        tmp_dict['boundary_coef_lower']
-                    )
-                    ydum = pol_lower_measured(xdum)
-                    plt.plot(xdum, ydum, tmpcolor + '-')
-                    pol_upper_measured = np.polynomial.Polynomial(
-                        tmp_dict['boundary_coef_upper']
-                    )
-                    ydum = pol_upper_measured(xdum)
-                    plt.plot(xdum, ydum, tmpcolor + '-')
-            # slitlet label
-            yc_lower = pol_lower_expected(NAXIS1_EMIR / 2 + 0.5)
-            yc_upper = pol_upper_expected(NAXIS1_EMIR / 2 + 0.5)
-            ax.text(NAXIS1_EMIR / 2 + 0.5, (yc_lower + yc_upper) / 2,
-                    str(islitlet), fontsize=10, va='center', ha='center',
-                    bbox=dict(boxstyle="round,pad=0.1",
-                              fc="white", ec="grey"),
-                    color=tmpcolor, fontweight='bold',
-                    backgroundcolor='white')
-
+        overplot_boundaries_from_bounddict(bounddict, ['r', 'b'])
+        overplot_boundaries_from_params(ax, params, ['r', 'b'],
+                                        linetype='--')
+        overplot_boundaries_from_params(ax, result.params, ['m', 'c'],
+                                        linetype=':')
         pause_debugplot(debugplot=args.debugplot, pltshow=True)
 
 
