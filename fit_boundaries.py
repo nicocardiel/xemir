@@ -94,7 +94,7 @@ def integrity_check(bounddict):
     print("* Integrity check OK!")
 
 
-def exvp_scalar(x, y, x0, y0, c1, c2):
+def exvp_scalar(x, y, x0, y0, c2, c4, theta0):
     """Convert virtual pixel to real pixel.
 
     Parameters
@@ -107,12 +107,14 @@ def exvp_scalar(x, y, x0, y0, c1, c2):
         X coordinate of reference pixel, in units of 1E3.
     y0 : float
         Y coordinate of reference pixel, in units of 1E3.
-    c1 : float
+    c2 : float
         Coefficient corresponding to the term r**2 in distortion
         equation, in units of 1E4.
-    c2 : float
+    c4 : float
         Coefficient corresponding to the term r**4 in distortion
         equation, in units of 1E9
+    theta0 : float
+        Additional rotation angle (radians).
 
     Returns
     -------
@@ -131,18 +133,20 @@ def exvp_scalar(x, y, x0, y0, c1, c2):
     # slightly (reaching values around 1.033) for r~sqrt(2)*1024
     # (the distance to the corner of the detector measured from the
     # center)
-    rdist = (1 + c1 * 1.0E4 * r_rad**2 + c2 * 1.0E9 * r_rad**4)
+    rdist = (1 +
+             c2 * 1.0E4 * r_rad**2 +
+             c4 * 1.0E9 * r_rad**4)
     # angle measured from the Y axis towards the X axis
     theta = np.arctan((x - x0*1000)/(y - y0*1000))
     if y < y0*1000:
         theta = theta - np.pi
     # distorted coordinates
-    xdist = (rdist * r_pix * np.sin(theta)) + x0*1000
-    ydist = (rdist * r_pix * np.cos(theta)) + y0*1000
+    xdist = (rdist * r_pix * np.sin(theta+theta0/1000)) + x0*1000
+    ydist = (rdist * r_pix * np.cos(theta+theta0/1000)) + y0*1000
     return xdist, ydist
 
 
-def exvp(x, y, x0, y0, c1, c2):
+def exvp(x, y, x0, y0, c2, c4, theta0):
     """Convert virtual pixel(s) to real pixel(s).
 
     This function makes use of exvp_scalar(), which performs the
@@ -159,12 +163,14 @@ def exvp(x, y, x0, y0, c1, c2):
         X coordinate of reference pixel.
     y0 : float
         Y coordinate of reference pixel.
-    c1 : float
+    c2 : float
         Coefficient corresponding to the term r**2 in distortion
         equation.
-    c2 : float
+    c4 : float
         Coefficient corresponding to the term r**4 in distortion
         equation.
+    theta0 : float
+        Additional rotation angle (radians)
 
     Returns
     -------
@@ -174,7 +180,8 @@ def exvp(x, y, x0, y0, c1, c2):
     """
 
     if all([np.isscalar(x), np.isscalar(y)]):
-        xdist, ydist = exvp_scalar(x, y, x0=x0, y0=y0, c1=c1, c2=c2)
+        xdist, ydist = exvp_scalar(x, y, x0=x0, y0=y0,
+                                   c2=c2, c4=c4, theta0=theta0)
         return xdist, ydist
     elif any([np.isscalar(x), np.isscalar(y)]):
         raise ValueError("invalid mixture of scalars and arrays")
@@ -182,19 +189,27 @@ def exvp(x, y, x0, y0, c1, c2):
         xdist = []
         ydist = []
         for x_, y_ in zip(x, y):
-            xdist_, ydist_ = exvp_scalar(x_, y_, x0=x0, y0=y0, c1=c1, c2=c2)
+            xdist_, ydist_ = exvp_scalar(x_, y_, x0=x0, y0=y0,
+                                         c2=c2, c4=c4, theta0=theta0)
             xdist.append(xdist_)
             ydist.append(ydist_)
         return np.array(xdist), np.array(ydist)
 
 
-def expected_distorted_boundaries(islitlet, border, slit_height, slit_gap,
-                                  y_baseline, x0, y0, c1, c2,
-                                  numpts, deg,
-                                  debugplot=0):
+def expected_distorted_boundaries(islitlet, border, params,
+                                  numpts, deg, debugplot=0):
     """Return polynomial coefficients of expected distorted boundaries.
 
     """
+
+    slit_height = params['slit_height'].value
+    slit_gap = params['slit_gap'].value
+    y_baseline = params['y_baseline'].value
+    x0 = params['x0'].value
+    y0 = params['y0'].value
+    c2 = params['c2'].value
+    c4 = params['c4'].value
+    theta0 = params['theta0'].value
 
     if border not in ['lower', 'upper', 'both']:
         raise ValueError('Unexpected border:', border)
@@ -213,14 +228,16 @@ def expected_distorted_boundaries(islitlet, border, slit_height, slit_gap,
         # undistorted boundary
         yp_bottom = np.ones(numpts) * ybottom
         # distorted boundary
-        xdist, ydist = exvp(xp, yp_bottom, x0=x0, y0=y0, c1=c1, c2=c2)
+        xdist, ydist = exvp(xp, yp_bottom, x0=x0, y0=y0,
+                            c2=c2, c4=c4, theta0=theta0)
         poly_lower, dum = polfit_residuals(xdist, ydist, deg,
                                            debugplot=debugplot)
     if border in ['upper', 'both']:
         # undistorted boundary
         yp_top = np.ones(numpts) * ytop
         # distorted boundary
-        xdist, ydist = exvp(xp, yp_top, x0=x0, y0=y0, c1=c1, c2=c2)
+        xdist, ydist = exvp(xp, yp_top, x0=x0, y0=y0,
+                            c2=c2, c4=c4, theta0=theta0)
         poly_upper, dum = polfit_residuals(xdist, ydist, deg,
                                            debugplot=debugplot)
 
@@ -232,16 +249,7 @@ def expected_distorted_boundaries(islitlet, border, slit_height, slit_gap,
         return poly_lower, poly_upper
 
 
-def fun_residuals(params, bounddict, numresolution):
-    # read individual parameters
-    slit_height = params['slit_height'].value
-    slit_gap = params['slit_gap'].value
-    y_baseline = params['y_baseline'].value
-    x0 = params['x0'].value
-    y0 = params['y0'].value
-    c1 = params['c1'].value
-    c2 = params['c2'].value
-
+def fun_residuals(params, bounddict, numresolution, islitmin, islitmax):
     residuals = 0.0
     nsummed = 0
 
@@ -249,53 +257,54 @@ def fun_residuals(params, bounddict, numresolution):
     read_slitlets.sort()
     for tmp_slitlet in read_slitlets:
         islitlet = int(tmp_slitlet[7:])
-        # expected boundaries using provided parameters
-        poly_lower_expected, poly_upper_expected = \
-            expected_distorted_boundaries(
-                islitlet, 'both', slit_height, slit_gap, y_baseline,
-                x0, y0, c1, c2, numpts=numresolution, deg=7, debugplot=0
-            )
-        # print(79 * '-')
-        # print('>>> Reading slitlet ', islitlet)
-        read_dateobs = bounddict['contents'][tmp_slitlet].keys()
-        read_dateobs.sort()
-        for tmp_dateobs in read_dateobs:
-            # print('...', tmp_dateobs)
-            tmp_dict = bounddict['contents'][tmp_slitlet][tmp_dateobs]
-            # lower boundary
-            poly_lower_measured = np.polynomial.Polynomial(
-                tmp_dict['boundary_coef_lower']
-            )
-            xmin_lower_bound = tmp_dict['boundary_xmin_lower']
-            xmax_lower_bound = tmp_dict['boundary_xmax_lower']
-            xdum_lower = np.linspace(xmin_lower_bound, xmax_lower_bound,
-                                     num=numresolution)
-            # distance between expected and measured polynomials
-            poly_diff = poly_lower_expected - poly_lower_measured
-            residuals += np.sum(poly_diff(xdum_lower)**2)
-            nsummed += numresolution
-            # upper boundary
-            poly_upper_measured = np.polynomial.Polynomial(
-                tmp_dict['boundary_coef_upper']
-            )
-            xmin_upper_bound = tmp_dict['boundary_xmin_upper']
-            xmax_upper_bound = tmp_dict['boundary_xmax_upper']
-            xdum_upper = np.linspace(xmin_upper_bound, xmax_upper_bound,
-                                     num=numresolution)
-            # distance between expected and measured polynomials
-            poly_diff = poly_upper_expected - poly_upper_measured
-            residuals += np.sum(poly_diff(xdum_upper)**2)
-            nsummed += numresolution
+        if islitmin <= islitlet <= islitmax:
+            # expected boundaries using provided parameters
+            poly_lower_expected, poly_upper_expected = \
+                expected_distorted_boundaries(
+                    islitlet, 'both', params,
+                    numpts=numresolution, deg=7, debugplot=0
+                )
+            # print(79 * '-')
+            # print('>>> Reading slitlet ', islitlet)
+            read_dateobs = bounddict['contents'][tmp_slitlet].keys()
+            read_dateobs.sort()
+            for tmp_dateobs in read_dateobs:
+                # print('...', tmp_dateobs)
+                tmp_dict = bounddict['contents'][tmp_slitlet][tmp_dateobs]
+                # lower boundary
+                poly_lower_measured = np.polynomial.Polynomial(
+                    tmp_dict['boundary_coef_lower']
+                )
+                xmin_lower_bound = tmp_dict['boundary_xmin_lower']
+                xmax_lower_bound = tmp_dict['boundary_xmax_lower']
+                xdum_lower = np.linspace(xmin_lower_bound, xmax_lower_bound,
+                                         num=numresolution)
+                # distance between expected and measured polynomials
+                poly_diff = poly_lower_expected - poly_lower_measured
+                residuals += np.sum(poly_diff(xdum_lower)**2)
+                nsummed += numresolution
+                # upper boundary
+                poly_upper_measured = np.polynomial.Polynomial(
+                    tmp_dict['boundary_coef_upper']
+                )
+                xmin_upper_bound = tmp_dict['boundary_xmin_upper']
+                xmax_upper_bound = tmp_dict['boundary_xmax_upper']
+                xdum_upper = np.linspace(xmin_upper_bound, xmax_upper_bound,
+                                         num=numresolution)
+                # distance between expected and measured polynomials
+                poly_diff = poly_upper_expected - poly_upper_measured
+                residuals += np.sum(poly_diff(xdum_upper)**2)
+                nsummed += numresolution
 
     residuals = np.sqrt(residuals/nsummed)
     print('>>> residuals:', residuals)
+    params.pretty_print()
     return residuals
 
 
 def overplot_boundaries_from_bounddict(bounddict, micolors, linetype='-'):
     for islitlet in range(1, EMIR_NBARS + 1):
         tmpcolor = micolors[islitlet % 2]
-
         tmp_slitlet = 'slitlet' + str(islitlet).zfill(2)
         if tmp_slitlet in bounddict['contents'].keys():
             read_dateobs = bounddict['contents'][tmp_slitlet].keys()
@@ -317,22 +326,11 @@ def overplot_boundaries_from_bounddict(bounddict, micolors, linetype='-'):
 
 
 def overplot_boundaries_from_params(ax, params, micolors, linetype='--'):
-    # read individual parameters
-    slit_height = params['slit_height'].value
-    slit_gap = params['slit_gap'].value
-    y_baseline = params['y_baseline'].value
-    x0 = params['x0'].value
-    y0 = params['y0'].value
-    c1 = params['c1'].value
-    c2 = params['c2'].value
-
     for islitlet in range(1, EMIR_NBARS + 1):
         tmpcolor = micolors[islitlet % 2]
         pol_lower_expected, pol_upper_expected = \
-            expected_distorted_boundaries(
-                islitlet, 'both', slit_height, slit_gap, y_baseline,
-                x0, y0, c1, c2, numpts=101, deg=7, debugplot=0
-            )
+            expected_distorted_boundaries(islitlet, 'both', params,
+                                          numpts=101, deg=7, debugplot=0)
         xdum = np.linspace(1, NAXIS1_EMIR, num=NAXIS1_EMIR)
         ydum = pol_lower_expected(xdum)
         plt.plot(xdum, ydum, tmpcolor + linetype)
@@ -347,6 +345,122 @@ def overplot_boundaries_from_params(ax, params, micolors, linetype='--'):
                           fc="white", ec="grey"),
                 color=tmpcolor, fontweight='bold',
                 backgroundcolor='white')
+
+
+def save_boundaries_from_bounddict_ds9(bounddict, ds9_filename, numpix=100):
+    ds9_file = open(ds9_filename, 'w')
+
+    ds9_file.write('# Region file format: DS9 version 4.1\n')
+    ds9_file.write('global color=green dashlist=2 4 width=2 '
+                   'font="helvetica 10 normal roman" select=1 '
+                   'highlite=1 dash=1 fixed=0 edit=1 '
+                   'move=1 delete=1 include=1 source=1\n')
+    ds9_file.write('physical\n')
+
+    uuid = bounddict['uuid']
+    spfilter = bounddict['tags']['filter']
+    grism = bounddict['tags']['grism']
+
+    ds9_file.write('#\n# uuid.......: {0}\n'.format(uuid))
+    ds9_file.write('# filter....: {0}\n'.format(spfilter))
+    ds9_file.write('# grism......: {0}\n'.format(grism))
+
+    colorbox = ['green', 'green']
+    for islitlet in range(1, EMIR_NBARS + 1):
+        tmp_slitlet = 'slitlet' + str(islitlet).zfill(2)
+        if tmp_slitlet in bounddict['contents'].keys():
+            ds9_file.write('#\n# islitlet: {0}\n'.format(tmp_slitlet))
+            read_dateobs = bounddict['contents'][tmp_slitlet].keys()
+            read_dateobs.sort()
+            for tmp_dateobs in read_dateobs:
+                ds9_file.write('#\n# date-obs: {0}\n'.format(tmp_dateobs))
+                tmp_dict = bounddict['contents'][tmp_slitlet][tmp_dateobs]
+                # lower boundary
+                pol_lower_measured = np.polynomial.Polynomial(
+                    tmp_dict['boundary_coef_lower']
+                )
+                xdum = np.linspace(1, NAXIS1_EMIR, num=numpix)
+                ydum = pol_lower_measured(xdum)
+                for i in range(len(xdum) - 1):
+                    ds9_file.write(
+                        'line {0} {1} {2} {3}'.format(xdum[i], ydum[i],
+                                                      xdum[i + 1], ydum[i + 1])
+                    )
+                    ds9_file.write(
+                        ' # color={0}\n'.format(colorbox[islitlet % 2]))
+                pol_upper_measured = np.polynomial.Polynomial(
+                    tmp_dict['boundary_coef_upper']
+                )
+                ydum = pol_upper_measured(xdum)
+                for i in range(len(xdum) - 1):
+                    ds9_file.write(
+                        'line {0} {1} {2} {3}'.format(xdum[i], ydum[i],
+                                                      xdum[i + 1], ydum[i + 1])
+                    )
+                    ds9_file.write(
+                        ' # color={0}\n'.format(colorbox[islitlet % 2]))
+    ds9_file.close()
+
+
+def save_boundaries_from_params_ds9(params, ds9_filename, numpix=100):
+    # read individual parameters
+    slit_height = params['slit_height'].value
+    slit_gap = params['slit_gap'].value
+    y_baseline = params['y_baseline'].value
+    x0 = params['x0'].value
+    y0 = params['y0'].value
+    c2 = params['c2'].value
+    c4 = params['c4'].value
+    theta0 = params['theta0'].value
+
+    ds9_file = open(ds9_filename, 'w')
+
+    ds9_file.write('# Region file format: DS9 version 4.1\n')
+    ds9_file.write('global color=green dashlist=2 4 width=2 '
+                   'font="helvetica 10 normal roman" select=1 '
+                   'highlite=1 dash=1 fixed=0 edit=1 '
+                   'move=1 delete=1 include=1 source=1\n')
+    ds9_file.write('physical\n')
+
+    ds9_file.write('#\n# slit_height: {0}\n'.format(slit_height))
+    ds9_file.write('# slit_gap...: {0}\n'.format(slit_gap))
+    ds9_file.write('# y_baseline.: {0}\n'.format(y_baseline))
+    ds9_file.write('# x0.........: {0}\n'.format(x0))
+    ds9_file.write('# y0.........: {0}\n'.format(y0))
+    ds9_file.write('# c2.........: {0}\n'.format(c2))
+    ds9_file.write('# c4.........: {0}\n'.format(c4))
+    ds9_file.write('# theta0.....: {0}\n'.format(theta0))
+
+    colorbox = ['#ff77ff', '#4444ff']
+    for islitlet in range(1, EMIR_NBARS + 1):
+        ds9_file.write('#\n# islitlet: {0}\n'.format(islitlet))
+        pol_lower_expected, pol_upper_expected = \
+            expected_distorted_boundaries(islitlet, 'both', params,
+                                          numpts=101, deg=7, debugplot=0)
+        xdum = np.linspace(1, NAXIS1_EMIR, num=numpix)
+        ydum = pol_lower_expected(xdum)
+        for i in range(len(xdum)-1):
+            ds9_file.write(
+                'line {0} {1} {2} {3}'.format(xdum[i], ydum[i],
+                                              xdum[i+1], ydum[i+1])
+            )
+            ds9_file.write(' # color={0}\n'.format(colorbox[islitlet % 2]))
+        ydum = pol_upper_expected(xdum)
+        for i in range(len(xdum)-1):
+            ds9_file.write(
+                'line {0} {1} {2} {3}'.format(xdum[i], ydum[i],
+                                              xdum[i+1], ydum[i+1])
+            )
+            ds9_file.write(' # color={0}\n'.format(colorbox[islitlet % 2]))
+        # slitlet label
+        yc_lower = pol_lower_expected(NAXIS1_EMIR / 2 + 0.5)
+        yc_upper = pol_upper_expected(NAXIS1_EMIR / 2 + 0.5)
+        ds9_file.write('text {0} {1} {{{2}}} # color={3} '
+                       'font="helvetica 10 bold '
+                       'roman"\n'.format(NAXIS1_EMIR / 2 + 0.5,
+                                        (yc_lower+yc_upper)/2, islitlet,
+                                         colorbox[islitlet % 2]))
+    ds9_file.close()
 
 
 def main(args=None):
@@ -367,18 +481,20 @@ def main(args=None):
     # read boundict file and check its contents
     bounddict = json.loads(open(args.boundict.name).read())
     integrity_check(bounddict)
+    save_boundaries_from_bounddict_ds9(bounddict, 'ds9_bound.reg')
 
     # initial parameters
-    slit_height = 33.5  # 33.437  # 33.441  # 33.453  # 33.462  # 33.475
-    slit_gap = 4.0  # 4.015  # 4.006  # 3.997  # 3.988  # 3.979
+    slit_height = 33.88  # 33.5
+    slit_gap = 3.584  # 4.0
     # 7(H-H), 3(K-Ksp), -85(LR-HK), -87(LR-YJ)
-    y_baseline = 2.0  # 2.347  # 2.295  # 2.244  # 2.195  # 2.147
+    y_baseline = 1.441  # 2.0
+    theta0 = 1.0  # in units of 1E-3 radians
     if bounddict['tags']['grism'] == 'J' and \
         bounddict['tags']['filter'] == 'J':
         x0 = 1.0245  # in units of 1E3
         y0 = 1.0245  # in units of 1E3
-        c1 = 1.46067  # in units of 1E4
-        c2 = 1.7397161151  # in units of 1E9
+        c2 = 1.241  # in units of 1E4
+        c4 = 1.744  # in units of 1E9
     else:
         raise ValueError("Distortion parameters are not available for this "
                          "combination of grism and filter")
@@ -387,14 +503,18 @@ def main(args=None):
     params.add('slit_height', value=slit_height, vary=True, min=30, max=40)
     params.add('slit_gap', value=slit_gap, vary=True, min=2, max=6)
     params.add('y_baseline', value=y_baseline, vary=True, min=-3, max=7)
-    params.add('x0', value=x0, vary=False)
-    params.add('y0', value=y0, vary=False)
-    params.add('c1', value=c1, vary=False)
-    params.add('c2', value=c2, vary=True, min=2, max=-6)
+    params.add('x0', value=x0, vary=True)
+    params.add('y0', value=y0, vary=True)
+    params.add('c2', value=c2, vary=True)
+    params.add('c4', value=c4, vary=True)
+    params.add('theta0', value=theta0, vary=True)
 
+    islitmin=2
+    islitmax=2  # EMIR_NBARS
     result = minimize(fun_residuals, params, method='nelder',
-                      args=(bounddict, args.numresolution))
-    result.params.pretty_print()
+                      args=(bounddict, args.numresolution,
+                            islitmin, islitmax))
+    save_boundaries_from_params_ds9(result.params, 'ds9_param.reg')
 
     if args.debugplot % 10 != 0:
         fig = plt.figure()
@@ -405,10 +525,10 @@ def main(args=None):
         ax.set_xlabel('Y axis (from 1 to NAXIS2)')
         ax.set_title(args.boundict.name)
         overplot_boundaries_from_bounddict(bounddict, ['r', 'b'])
-        overplot_boundaries_from_params(ax, params, ['r', 'b'],
-                                        linetype='--')
+        # overplot_boundaries_from_params(ax, params, ['r', 'b'],
+        #                                 linetype=':')
         overplot_boundaries_from_params(ax, result.params, ['m', 'c'],
-                                        linetype=':')
+                                        linetype='--')
         pause_debugplot(debugplot=args.debugplot, pltshow=True)
 
 
