@@ -562,25 +562,25 @@ class EmirSlitlet:
 
         # specific corrections for each grism + filter combination
         if grism_name == "J" and filter_name == "J":
-            self.deg_boundary = 4
+            self.deg_boundary = 5
             self.bb_ns1_orig += 0
             self.bb_ns2_orig += 0
             if slitlet_number == 54:
                 self.xmin_upper_boundary_fit = 400
                 self.xmax_upper_boundary_fit = 1750
         elif grism_name == "H" and filter_name == "H":
-            self.deg_boundary = 4
+            self.deg_boundary = 0
             self.bb_ns1_orig += 4
             self.bb_ns2_orig += 4
             if slitlet_number == 54:
                 raise ValueError("slitlet number " + str(slitlet_number) +
                                  " is not defined")
         elif grism_name == "K" and filter_name == "Ksp":
-            self.deg_boundary = 4
+            self.deg_boundary = 0
             self.bb_ns1_orig += 0
             self.bb_ns2_orig += 0
         elif grism_name == "LR" and filter_name == "YJ":
-            self.deg_boundary = 2
+            self.deg_boundary = 0
             self.bb_ns1_orig -= 90
             if self.bb_ns1_orig < 1:
                 self.bb_ns1_orig = 1
