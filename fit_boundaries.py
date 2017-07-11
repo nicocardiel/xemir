@@ -217,11 +217,11 @@ def expected_distorted_boundaries(islitlet, border, params,
         raise ValueError('Unexpected border:', border)
 
     xp = np.linspace(1, NAXIS1_EMIR, numpts)
-    slit_dist = slit_height * 10 + slit_gap
+    slit_dist = (slit_height * 10) + slit_gap
 
-    # y-coordinates at x=1024.5
+    # undistorted (constant) y-coordinate of the lower and upper boundaries
     ybottom = y_baseline + (islitlet - 1) * slit_dist
-    ytop = ybottom + slit_height * 10
+    ytop = ybottom + (slit_height * 10)
 
     # avoid PyCharm warning (variables might by referenced before assignment)
     poly_lower = poly_upper = None  # avoid PyCharm warning
@@ -468,7 +468,7 @@ def save_boundaries_from_params_ds9(params, ds9_filename, numpix=100):
 
 def main(args=None):
     parser = argparse.ArgumentParser(prog='fit_boundaries')
-    parser.add_argument("boundict",
+    parser.add_argument("--bounddict",
                         help="JSON boundary file",
                         type=argparse.FileType('r'))
     parser.add_argument("--numresolution",
@@ -481,60 +481,71 @@ def main(args=None):
                         choices=DEBUGPLOT_CODES)
     args = parser.parse_args(args)
 
-    # read boundict file and check its contents
-    bounddict = json.loads(open(args.boundict.name).read())
-    integrity_check(bounddict)
-    save_boundaries_from_bounddict_ds9(bounddict, 'ds9_bound.reg')
+    if args.bounddict is not None:
+        # read boundict file and check its contents
+        bounddict = json.loads(open(args.bounddict.name).read())
+        integrity_check(bounddict)
+        save_boundaries_from_bounddict_ds9(bounddict, 'ds9_bound.reg')
 
-    # initial parameters
-    slit_height = 3.390  # in units of 1E1
-    slit_gap = 3.578
-    # 7(H-H), 3(K-Ksp), -85(LR-HK), -87(LR-YJ)
-    y_baseline = 1.323
-    theta0 = 0.6503  # in units of 1E-3 radians
-    if bounddict['tags']['grism'] == 'J' and \
-        bounddict['tags']['filter'] == 'J':
-        x0 = 1.0245  # in units of 1E3
-        y0 = 1.0245  # in units of 1E3
-        c2 = 1.234   # in units of 1E4
-        c4 = 1.786   # in units of 1E9
+        # initial parameters
+        slit_height = 3.40  # in units of 1E1
+        slit_gap = 3.50
+        # 7(H-H), 3(K-Ksp), -85(LR-HK), -87(LR-YJ)
+        y_baseline = 1.323
+        theta0 = 0.6503  # in units of 1E-3 radians
+        if bounddict['tags']['grism'] == 'J' and \
+            bounddict['tags']['filter'] == 'J':
+            x0 = 1.0245  # in units of 1E3
+            y0 = 1.0245  # in units of 1E3
+            c2 = 1.234   # in units of 1E4
+            c4 = 1.786   # in units of 1E9
+        else:
+            raise ValueError("Distortion parameters are not available for this "
+                             "combination of grism and filter")
+
+        params = Parameters()
+        params.add('slit_height', value=slit_height, vary=False, min=3, max=4)
+        params.add('slit_gap', value=slit_gap, vary=False, min=2, max=6)
+        params.add('y_baseline', value=y_baseline, vary=True, min=-3, max=7)
+        params.add('x0', value=x0, vary=True)
+        params.add('y0', value=y0, vary=True)
+        params.add('c2', value=c2, vary=True)
+        params.add('c4', value=c4, vary=True)
+        params.add('theta0', value=theta0, vary=True)
+
+        islitlet_min = 2
+        islitlet_max = 54
+        array_of_results = np.zeros((islitlet_max - islitlet_min + 1, 2),
+                                    dtype=minimizer.MinimizerResult)
+        list_slitlets = range(islitlet_min, islitlet_max + 1)
+        for idum, islitlet in enumerate(list_slitlets):
+            result = minimize(fun_residuals, params, method='nelder',
+                              args=(bounddict, args.numresolution,
+                                    islitlet, islitlet))
+            # save_boundaries_from_params_ds9(result.params, 'ds9_param.reg')
+            print('\n>>> islitlet, chisqr', islitlet, result.chisqr)
+            result.params.pretty_print()
+
+            array_of_results[idum, 0] = islitlet
+            array_of_results[idum, 1] = result
+
+        pickle.dump(array_of_results, open('dum.pickle', 'wb') )
+
     else:
-        raise ValueError("Distortion parameters are not available for this "
-                         "combination of grism and filter")
-
-    params = Parameters()
-    params.add('slit_height', value=slit_height, vary=True, min=3, max=4)
-    params.add('slit_gap', value=slit_gap, vary=True, min=2, max=6)
-    params.add('y_baseline', value=y_baseline, vary=True, min=-3, max=7)
-    params.add('x0', value=x0, vary=True)
-    params.add('y0', value=y0, vary=True)
-    params.add('c2', value=c2, vary=True)
-    params.add('c4', value=c4, vary=True)
-    params.add('theta0', value=theta0, vary=True)
-
-    islitlet_min = 2
-    islitlet_max = 54
-    array_of_results = np.zeros((islitlet_max - islitlet_min + 1, 2),
-                                dtype=minimizer.MinimizerResult)
-    list_slitlets = range(islitlet_min, islitlet_max + 1)
-    for idum, islitlet in enumerate(list_slitlets):
-        result = minimize(fun_residuals, params, method='nelder',
-                          args=(bounddict, args.numresolution,
-                                islitlet, islitlet))
-        # save_boundaries_from_params_ds9(result.params, 'ds9_param.reg')
-        print('\n>>> islitlet, chisqr', islitlet, result.chisqr)
-        result.params.pretty_print()
-
-        array_of_results[idum, 0] = islitlet
-        array_of_results[idum, 1] = result
-
-    pickle.dump(array_of_results, open('array_of_results.p', 'wb') )
+        array_of_results = pickle.load(open('dum.pickle', 'rb'))
+        for idum in range(array_of_results.shape[0]):
+            islitlet = array_of_results[idum, 0]
+            result = array_of_results[idum, 1]
+            print('\n>>> islitlet, chisqr', islitlet, result.chisqr)
+            result.params.pretty_print()
 
     fig = plt.figure()
     ax = fig.add_subplot(111)
     ax.set_xlim([0, EMIR_NBARS + 1])
     xplot = array_of_results[:, 0]
-    for vardum in ['chisqr', 'slit_height', 'slit_gap', 'y_baseline',
+    # for vardum in ['chisqr', 'slit_height', 'slit_gap', 'y_baseline',
+    #                'x0', 'y0', 'c2', 'c4', 'theta0']:
+    for vardum in ['slit_gap', 'y_baseline',
                    'x0', 'y0', 'c2', 'c4', 'theta0']:
         if vardum == 'chisqr':
             yplot = [array_of_results[idum, 1].chisqr
@@ -543,7 +554,7 @@ def main(args=None):
             yplot = [array_of_results[idum, 1].params[vardum].value
                      for idum in range(array_of_results.shape[0])]
         yplot = np.array(yplot)
-        plt.plot(xplot, yplot, 'o', label=vardum)
+        plt.plot(xplot, yplot, '-', label=vardum)
         print('\n>>> ', vardum)
         stats.summary(yplot, debug=True)
     plt.legend()
