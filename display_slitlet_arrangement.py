@@ -76,6 +76,29 @@ def read_csup_from_header(image_header, debugplot=0):
                 ibar, csu_bar_left[i], csu_bar_right[i],
                 csu_bar_slit_center[i], csu_bar_slit_width[i]))
 
+    if debugplot >= 10:
+        print(
+            "---> {0:8.3f} {1:8.3f} {2:8.3f} {3:7.3f} <- mean (all)".format(
+                np.mean(csu_bar_left),
+                np.mean(csu_bar_right),
+                np.mean(csu_bar_slit_center),
+                np.mean(csu_bar_slit_width))
+        )
+        print(
+            "---> {0:8.3f} {1:8.3f} {2:8.3f} {3:7.3f} <- mean (odd)".format(
+                np.mean(csu_bar_left[::2]),
+                np.mean(csu_bar_right[::2]),
+                np.mean(csu_bar_slit_center[::2]),
+                np.mean(csu_bar_slit_width[::2]))
+        )
+        print(
+            "---> {0:8.3f} {1:8.3f} {2:8.3f} {3:7.3f} <- mean (even)".format(
+                np.mean(csu_bar_left[1::2]),
+                np.mean(csu_bar_right[1::2]),
+                np.mean(csu_bar_slit_center[1::2]),
+                np.mean(csu_bar_slit_width[1::2]))
+        )
+
     # return results
     return csu_bar_left, csu_bar_right, csu_bar_slit_center, \
            csu_bar_slit_width
