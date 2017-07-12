@@ -519,7 +519,7 @@ def main(args=None):
         params.add('slit_gap', value=slit_gap, vary=True)
         params.add('slit_height', value=slit_height, vary=True)
         params.add('theta0origin', value=theta0origin, vary=True)
-        params.add('theta0slope', value=theta0slope, vary=True)
+        params.add('theta0slope', value=theta0slope, vary=False)
         params.add('x0', value=x0, vary=False)
         params.add('y0', value=y0, vary=False)
         params.add('y_baseline', value=y_baseline, vary=True)
