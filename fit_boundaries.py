@@ -595,7 +595,7 @@ def main(args=None):
     # read bounddict file and check its contents
     bounddict = json.loads(open(args.bounddict.name).read())
     integrity_check(bounddict)
-    save_boundaries_from_bounddict_ds9(bounddict, 'ds9_bound.reg')
+    save_boundaries_from_bounddict_ds9(bounddict, 'ds9_bounddict.reg')
     # save lists with individual slitlet number and csu_bar_slit_center value,
     # needed to save ds9 region file and plotting
     list_islitlet = []
@@ -656,9 +656,9 @@ def main(args=None):
     result = minimize(fun_residuals, params, method='nelder',
                       args=(args.parmodel, bounddict, args.numresolution,
                             islitlet_min, islitlet_max))
-    print('\n>>> global residual',
-          fun_residuals(result.params, args.parmodel, bounddict,
-                        args.numresolution, islitlet_min, islitlet_max))
+    global_residual = fun_residuals(result.params, args.parmodel, bounddict,
+                             args.numresolution, islitlet_min, islitlet_max)
+    print('\n>>> global residual', global_residual)
     result.params.pretty_print()
 
     # export resulting boundaries to ds9 region file
@@ -666,13 +666,14 @@ def main(args=None):
                                     list_islitlet,
                                     list_islitlet,
                                     list_csu_bar_slit_center,
-                                    'ds9_param.reg')
+                                    'ds9_fittedpar.reg')
 
     if args.fittedparam is not None:
         fittedparam = deepcopy(initparam)
         fittedparam['meta-info']['creation_date'] = datetime.now().isoformat()
         fittedparam['meta-info']['description'] \
             = "fitted boundary parameters"
+        fittedparam['meta-info']['global_residual'] = global_residual
         fittedparam['meta-info']['uuid_bounddict'] = bounddict['uuid']
         fittedparam['meta-info']['uuid_initparam'] = initparam['uuid']
         fittedparam['meta-info']['parmodel'] = args.parmodel
