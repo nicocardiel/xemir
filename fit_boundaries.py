@@ -2,6 +2,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+from astropy.io import fits
 from datetime import datetime
 import json
 from lmfit import minimize, Parameters, minimizer
@@ -11,7 +12,7 @@ import pickle
 
 from numina.array.display.polfit_residuals import polfit_residuals
 from numina.array.display.pause_debugplot import pause_debugplot
-from numina.array import stats
+from numina.array.display.ximshow import ximshow
 from emirdrp.core import EMIR_NBARS
 
 from emir_definitions import NAXIS1_EMIR
@@ -562,6 +563,10 @@ def main(args=None):
     parser.add_argument("--pickle_input",
                         help="Pickle file containing result object",
                         type=argparse.FileType('r'))
+    parser.add_argument("--background_image",
+                        help="Optional FITS image to display as background "
+                             "image",
+                        type=argparse.FileType('r'))
     parser.add_argument("--debugplot",
                         help="Integer indicating plotting/debugging" +
                              " (default=0)",
@@ -577,6 +582,10 @@ def main(args=None):
         raise ValueError("--boundict and --pickle_input cannot be used " +
                          "simultaneously")
 
+    if args.background_image is not None and args.debugplot % 10 == 0:
+        raise ValueError("--background_image requires --debugplot value "
+                         "compatible with plotting")
+
     if args.longslit:
         paramstype = 'simple'
     else:
@@ -584,9 +593,12 @@ def main(args=None):
 
     if args.pickle_input is not None:
         result = pickle.load(open(args.pickle_input.name, 'rb'))
-        list_islitlet_lower = range(1, EMIR_NBARS + 1)
-        list_islitlet_upper = range(1, EMIR_NBARS + 1)
-        list_csu_bar_slit_center = [170.25] * EMIR_NBARS
+        # list_islitlet_lower = range(1, EMIR_NBARS + 1)
+        # list_islitlet_upper = range(1, EMIR_NBARS + 1)
+        # list_csu_bar_slit_center = [170.25] * EMIR_NBARS
+        list_islitlet_lower = [4, 23]
+        list_islitlet_upper = [9, 50]
+        list_csu_bar_slit_center = [170.25] * 2
 
     else:
         # read bounddict file and check its contents
@@ -671,15 +683,27 @@ def main(args=None):
 
     if args.debugplot % 10 != 0:
         fig = plt.figure()
-        ax = fig.add_subplot(111)
-        ax.set_xlim([-0.5, NAXIS1_EMIR + 0.5])
-        ax.set_ylim([-0.5, NAXIS2_EMIR + 0.5])
-        ax.set_xlabel('X axis (from 1 to NAXIS1)')
-        ax.set_xlabel('Y axis (from 1 to NAXIS2)')
-        if args.bounddict is not None:
-            ax.set_title(args.bounddict.name)
+        if args.background_image is not None:
+            # read input FITS file
+            hdulist = fits.open(args.background_image.name)
+            image2d = hdulist[0].data
+            hdulist.close()
+            if image2d.shape != (NAXIS2_EMIR, NAXIS1_EMIR):
+                raise ValueError("Unexpected error with NAXIS1, NAXIS2")
+            ax = ximshow(image2d=image2d,
+                         title=args.background_image.name,
+                         image_bbox=(1, NAXIS1_EMIR, 1, NAXIS2_EMIR),
+                         show=False)
         else:
-            ax.set_title(args.pickle_input)
+            ax = fig.add_subplot(111)
+            ax.set_xlim([-0.5, NAXIS1_EMIR + 0.5])
+            ax.set_ylim([-0.5, NAXIS2_EMIR + 0.5])
+            ax.set_xlabel('X axis (from 1 to NAXIS1)')
+            ax.set_xlabel('Y axis (from 1 to NAXIS2)')
+            if args.bounddict is not None:
+                ax.set_title(args.bounddict.name)
+            else:
+                ax.set_title(args.pickle_input.name)
         # boundaries from bounddict
         if args.bounddict is not None:
             overplot_boundaries_from_bounddict(bounddict, ['r', 'b'])
