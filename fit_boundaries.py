@@ -4,11 +4,13 @@ from __future__ import print_function
 import argparse
 from astropy.io import fits
 from datetime import datetime
+from copy import deepcopy
+from datetime import datetime
 import json
 from lmfit import minimize, Parameters, minimizer
 import matplotlib.pyplot as plt
 import numpy as np
-import pickle
+from uuid import uuid4
 
 from numina.array.display.polfit_residuals import polfit_residuals
 from numina.array.display.pause_debugplot import pause_debugplot
@@ -212,13 +214,13 @@ def exvp(x, y, x0, y0, c2, c4, theta0, ff):
 
 
 def expected_distorted_boundaries(islitlet, csu_bar_slit_center,
-                                  border, params, paramstype,
+                                  border, params, parmodel,
                                   numpts, deg, debugplot=0):
     """Return polynomial coefficients of expected distorted boundaries.
 
     """
 
-    if paramstype == "simple":
+    if parmodel == "longslit":
         c2 = params['c2'].value
         c4 = params['c4'].value
         ff = params['ff'].value
@@ -230,7 +232,7 @@ def expected_distorted_boundaries(islitlet, csu_bar_slit_center,
         y0 = params['y0'].value
         y_baseline = params['y_baseline'].value
     else:
-        raise ValueError("paramstype=" + str(paramstype) +
+        raise ValueError("parmodel=" + str(parmodel) +
                          " is not implemented")
 
     theta0 = theta0_origin/10000 + theta0_slope/100000 * islitlet
@@ -273,7 +275,7 @@ def expected_distorted_boundaries(islitlet, csu_bar_slit_center,
         return poly_lower, poly_upper
 
 
-def fun_residuals(params, paramstype, bounddict, numresolution,
+def fun_residuals(params, parmodel, bounddict, numresolution,
                   islitmin, islitmax):
     residuals = 0.0
     nsummed = 0
@@ -292,7 +294,7 @@ def fun_residuals(params, paramstype, bounddict, numresolution,
                 poly_lower_expected, poly_upper_expected = \
                     expected_distorted_boundaries(
                         islitlet, csu_bar_slit_center,
-                        'both', params, paramstype,
+                        'both', params, parmodel,
                         numpts=numresolution, deg=5, debugplot=0
                     )
                 # measured lower boundary
@@ -354,7 +356,7 @@ def overplot_boundaries_from_bounddict(bounddict, micolors, linetype='-'):
                 plt.plot(xdum, ydum, tmpcolor + linetype)
 
 
-def overplot_boundaries_from_params(ax, params, paramstype,
+def overplot_boundaries_from_params(ax, params, parmodel,
                                     list_islitlet_lower,
                                     list_islitlet_upper,
                                     list_csu_bar_slit_center,
@@ -367,10 +369,10 @@ def overplot_boundaries_from_params(ax, params, paramstype,
         tmpcolor = micolors[islitlet_lower % 2]
         pol_lower_expected = expected_distorted_boundaries(
             islitlet_lower, csu_bar_slit_center,
-            'lower', params, paramstype, numpts=101, deg=5, debugplot=0)
+            'lower', params, parmodel, numpts=101, deg=5, debugplot=0)
         pol_upper_expected = expected_distorted_boundaries(
             islitlet_upper, csu_bar_slit_center,
-            'upper', params, paramstype, numpts=101, deg=5, debugplot=0)
+            'upper', params, parmodel, numpts=101, deg=5, debugplot=0)
         xdum = np.linspace(1, NAXIS1_EMIR, num=NAXIS1_EMIR)
         ydum = pol_lower_expected(xdum)
         plt.plot(xdum, ydum, tmpcolor + linetype)
@@ -456,7 +458,8 @@ def save_boundaries_from_bounddict_ds9(bounddict, ds9_filename, numpix=100):
                     ds9_file.write(
                         ' # color={0}\n'.format(colorbox[islitlet % 2]))
                 # slitlet label
-                xlabel = (xmax_lower + xmax_upper + xmin_lower + xmin_upper) / 4
+                xlabel = xmax_lower + xmax_upper + xmin_lower + xmin_upper
+                xlabel /= 4
                 yc_lower = pol_lower_measured(xlabel)
                 yc_upper = pol_upper_measured(xlabel)
                 ds9_file.write('text {0} {1} {{{2}}} # color={3} '
@@ -469,7 +472,7 @@ def save_boundaries_from_bounddict_ds9(bounddict, ds9_filename, numpix=100):
     ds9_file.close()
 
 
-def save_boundaries_from_params_ds9(params, paramstype,
+def save_boundaries_from_params_ds9(params, parmodel,
                                     list_islitlet_lower,
                                     list_islitlet_upper,
                                     list_csu_bar_slit_center,
@@ -483,16 +486,14 @@ def save_boundaries_from_params_ds9(params, paramstype,
                    'move=1 delete=1 include=1 source=1\n')
     ds9_file.write('physical\n#\n')
 
-    if paramstype == "simple":
+    if parmodel == "longslit":
         for dumpar in EXPECTED_PARAMETER_LIST:
             parvalue = params[dumpar].value
             ds9_file.write('# {0}: {1}\n'.format(dumpar, parvalue))
-    elif paramstype == "full":
+    else:
         for dumpar in EXPECTED_PARAMETER_LIST_EXTENDED:
             parvalue = params[dumpar].value
             ds9_file.write('# {0}: {1}\n'.format(dumpar, parvalue))
-    else:
-        raise ValueError("paramstype not implemented")
 
     for islitlet_lower, islitlet_upper, csu_bar_slit_center in \
             zip(list_islitlet_lower,
@@ -514,11 +515,11 @@ def save_boundaries_from_params_ds9(params, paramstype,
         )
         pol_lower_expected = expected_distorted_boundaries(
             islitlet_lower, csu_bar_slit_center,
-            'lower', params, paramstype, numpts=101, deg=5, debugplot=0
+            'lower', params, parmodel, numpts=101, deg=5, debugplot=0
         )
         pol_upper_expected = expected_distorted_boundaries(
             islitlet_upper, csu_bar_slit_center,
-            'upper', params, paramstype, numpts=101, deg=5, debugplot=0
+            'upper', params, parmodel, numpts=101, deg=5, debugplot=0
         )
         xdum = np.linspace(1, NAXIS1_EMIR, num=numpix)
         ydum = pol_lower_expected(xdum)
@@ -558,22 +559,24 @@ def save_boundaries_from_params_ds9(params, paramstype,
 
 def main(args=None):
     parser = argparse.ArgumentParser(prog='fit_boundaries')
-    parser.add_argument("--bounddict",
-                        help="JSON boundary file with fits to "
+    parser.add_argument("bounddict",
+                        help="Input JSON boundary file with fits to "
                              "continuum-lamp exposures",
                         type=argparse.FileType('r'))
-    parser.add_argument("--longslit",
-                        help="Input bounddict corresponds to longslit",
-                        action="store_true")
-    parser.add_argument("--initparam",
-                        help="JSON with initial boundary parameters",
+    parser.add_argument("initparam",
+                        help="Input JSON with initial boundary parameters",
                         type=argparse.FileType('r'))
+    parser.add_argument("--parmodel",
+                        help="Parameter model: multislit (default) or "
+                             "longslit",
+                        default="multislit",
+                        choices=("multislit", "longslit"))
+    parser.add_argument("--fittedparam",
+                        help="Output JSON with fitted boundary parameters",
+                        type=argparse.FileType('w'))
     parser.add_argument("--numresolution",
                         help="Number of points/boundary (default=101)",
                         type=int, default=101)
-    parser.add_argument("--pickle_input",
-                        help="Pickle file containing result object",
-                        type=argparse.FileType('r'))
     parser.add_argument("--background_image",
                         help="Optional FITS image to display as background "
                              "image",
@@ -585,109 +588,113 @@ def main(args=None):
                         choices=DEBUGPLOT_CODES)
     args = parser.parse_args(args)
 
-    if args.bounddict is None and args.pickle_input is None:
-        raise ValueError("At least --bounddict or --pickle_input " +
-                         "must be used")
-
-    if args.bounddict is not None and args.pickle_input is not None:
-        raise ValueError("--boundict and --pickle_input cannot be used " +
-                         "simultaneously")
-
     if args.background_image is not None and args.debugplot % 10 == 0:
         raise ValueError("--background_image requires --debugplot value "
                          "compatible with plotting")
 
-    if args.longslit:
-        paramstype = 'simple'
-    else:
-        paramstype = 'full'
+    # read bounddict file and check its contents
+    bounddict = json.loads(open(args.bounddict.name).read())
+    integrity_check(bounddict)
+    save_boundaries_from_bounddict_ds9(bounddict, 'ds9_bound.reg')
+    # save lists with individual slitlet number and csu_bar_slit_center value,
+    # needed to save ds9 region file and plotting
+    list_islitlet = []
+    list_csu_bar_slit_center = []
+    read_slitlets = bounddict['contents'].keys()
+    read_slitlets.sort()
+    for tmp_slitlet in read_slitlets:
+        islitlet = int(tmp_slitlet[7:])
+        list_islitlet.append(islitlet)
+        read_dateobs = bounddict['contents'][tmp_slitlet].keys()
+        read_dateobs.sort()
+        for tmp_dateobs in read_dateobs:
+            tmp_dict = bounddict['contents'][tmp_slitlet][tmp_dateobs]
+            csu_bar_slit_center = tmp_dict['csu_bar_slit_center']
+            list_csu_bar_slit_center.append(csu_bar_slit_center)
 
-    if args.pickle_input is not None:
-        result = pickle.load(open(args.pickle_input.name, 'rb'))
-        list_islitlet_lower = range(1, EMIR_NBARS + 1)
-        list_islitlet_upper = range(1, EMIR_NBARS + 1)
-        list_csu_bar_slit_center = [170.25] * EMIR_NBARS
+    grism = bounddict['tags']['grism']
+    spfilter = bounddict['tags']['filter']
 
-    else:
-        # read bounddict file and check its contents
-        bounddict = json.loads(open(args.bounddict.name).read())
-        integrity_check(bounddict)
-        save_boundaries_from_bounddict_ds9(bounddict, 'ds9_bound.reg')
-        # save lists with individual slitlets and csu_bar_slit_center value,
-        # needed to save ds9 region file and plotting
-        list_islitlet_lower = []
-        list_islitlet_upper = []
-        list_csu_bar_slit_center = []
-        read_slitlets = bounddict['contents'].keys()
-        read_slitlets.sort()
-        for tmp_slitlet in read_slitlets:
-            islitlet = int(tmp_slitlet[7:])
-            list_islitlet_lower.append(islitlet)
-            list_islitlet_upper.append(islitlet)
-            read_dateobs = bounddict['contents'][tmp_slitlet].keys()
-            read_dateobs.sort()
-            for tmp_dateobs in read_dateobs:
-                tmp_dict = bounddict['contents'][tmp_slitlet][tmp_dateobs]
-                csu_bar_slit_center = tmp_dict['csu_bar_slit_center']
-                list_csu_bar_slit_center.append(csu_bar_slit_center)
+    # read initparam file
+    initparam = json.loads(open(args.initparam.name).read())
+    # check that grism and filter match
+    grism_ = initparam['tags']['grism']
+    spfilter_ = initparam['tags']['filter']
+    if grism != grism_:
+        raise ValueError("grism mismatch")
+    if spfilter != spfilter_:
+        raise ValueError("filter mismatch")
+    islitlet_min = initparam['tags']['islitlet_min']
+    islitlet_max = initparam['tags']['islitlet_max']
 
-        grism = bounddict['tags']['grism']
-        spfilter = bounddict['tags']['filter']
-
-        if args.initparam is None:
-            raise ValueError("Expected --initparam not found")
+    params = Parameters()
+    for mainpar in EXPECTED_PARAMETER_LIST:
+        if mainpar not in initparam['contents'].keys():
+            raise ValueError('Parameter ' + mainpar + ' not found in ' +
+                             args.initparam.name)
+        if args.parmodel == "longslit":
+            dumdict = initparam['contents'][mainpar]
+            params.add(mainpar, value=dumdict["value"],
+                       vary=dumdict["vary"])
         else:
-            # read initparam file
-            initparam = json.loads(open(args.initparam.name).read())
-            # check that grism and filter match
-            grism_ = initparam['tags']['grism']
-            spfilter_ = initparam['tags']['filter']
-            if grism != grism_:
-                raise ValueError("grism mismatch")
-            if spfilter != spfilter_:
-                raise ValueError("filter mismatch")
-            islitlet_min = initparam['tags']['islitlet_min']
-            islitlet_max = initparam['tags']['islitlet_max']
-
-        params = Parameters()
-        for mainpar in EXPECTED_PARAMETER_LIST:
-            if mainpar not in initparam['contents'].keys():
-                raise ValueError('Parameter ' + mainpar + ' not found in ' +
-                                 args.initparam.name)
-            if args.longslit:
-                dumdict = initparam['contents'][mainpar]
-                params.add(mainpar, value=dumdict["value"],
+            for subpar in ['a0s', 'a1s', 'a2s']:
+                if subpar not in initparam['contents'][mainpar].keys():
+                    raise ValueError('Subparameter ' + subpar +
+                                     ' not found in ' +
+                                     args.initparam.name +
+                                     ' under parameter ' + mainpar)
+                cpar = mainpar + '_' + subpar
+                dumdict = initparam['contents'][mainpar][subpar]
+                params.add(cpar, value=dumdict["value"],
                            vary=dumdict["vary"])
-            else:
-                for subpar in ['a0s', 'a1s', 'a2s']:
-                    if subpar not in initparam['contents'][mainpar].keys():
-                        raise ValueError('Subparameter ' + subpar +
-                                         ' not found in ' +
-                                         args.initparam.name +
-                                         ' under parameter ' + mainpar)
-                    cpar = mainpar + '_' + subpar
-                    dumdict = initparam['contents'][mainpar][subpar]
-                    params.add(cpar, value=dumdict["value"],
-                               vary=dumdict["vary"])
 
-        params.pretty_print()
-        pause_debugplot(debugplot=12)
+    print('-' * 79)
+    print('* INITIAL PARAMETERS')
+    params.pretty_print()
+    print('-' * 79)
 
-        result = minimize(fun_residuals, params, method='nelder',
-                          args=(paramstype, bounddict, args.numresolution,
-                                islitlet_min, islitlet_max))
-        print('\n>>> global residual',
-              fun_residuals(result.params, paramstype, bounddict,
-                            args.numresolution, islitlet_min, islitlet_max))
-        result.params.pretty_print()
+    result = minimize(fun_residuals, params, method='nelder',
+                      args=(args.parmodel, bounddict, args.numresolution,
+                            islitlet_min, islitlet_max))
+    print('\n>>> global residual',
+          fun_residuals(result.params, args.parmodel, bounddict,
+                        args.numresolution, islitlet_min, islitlet_max))
+    result.params.pretty_print()
 
-        # export resulting boundaries to ds9 region file
-        save_boundaries_from_params_ds9(result.params, paramstype,
-                                        list_islitlet_lower,
-                                        list_islitlet_upper,
-                                        list_csu_bar_slit_center,
-                                        'ds9_param.reg')
-        pickle.dump(result, open('dum.pickle', 'wb'))
+    # export resulting boundaries to ds9 region file
+    save_boundaries_from_params_ds9(result.params, args.parmodel,
+                                    list_islitlet,
+                                    list_islitlet,
+                                    list_csu_bar_slit_center,
+                                    'ds9_param.reg')
+
+    if args.fittedparam is not None:
+        fittedparam = deepcopy(initparam)
+        fittedparam['meta-info']['creation_date'] = datetime.now().isoformat()
+        fittedparam['meta-info']['description'] \
+            = "fitted boundary parameters"
+        fittedparam['meta-info']['uuid_bounddict'] = bounddict['uuid']
+        fittedparam['meta-info']['uuid_initparam'] = initparam['uuid']
+        fittedparam['meta-info']['parmodel'] = args.parmodel
+        fittedparam['uuid'] = str(uuid4())
+        if args.parmodel == "longslit":
+            for mainpar in EXPECTED_PARAMETER_LIST:
+                parvalue = result.params[mainpar].value
+                fittedparam['contents'][mainpar]['value'] = parvalue
+            # compute median csu_bar_slit_center
+            dumlist = []
+            for islitlet, csu_bar_slit_center in \
+                    zip(list_islitlet, list_csu_bar_slit_center):
+                if islitlet_min <= islitlet <= islitlet_max:
+                    dumlist.append(csu_bar_slit_center)
+            median_csu_bar_slit_center = np.median(np.array(dumlist))
+            fittedparam['meta-info']['median_csu_bar_slit_center'] = \
+                median_csu_bar_slit_center
+        else:
+            raise ValueError("parmodel " + args.parmodel +
+                             " is not implemented")
+        with open(args.fittedparam.name, 'w') as fstream:
+            json.dump(fittedparam, fstream, indent=2, sort_keys=True)
 
     if args.debugplot % 10 != 0:
         fig = plt.figure()
@@ -716,9 +723,9 @@ def main(args=None):
         if args.bounddict is not None:
             overplot_boundaries_from_bounddict(bounddict, ['r', 'b'])
         # expected boundaries
-        overplot_boundaries_from_params(ax, result.params, paramstype,
-                                        list_islitlet_lower,
-                                        list_islitlet_upper,
+        overplot_boundaries_from_params(ax, result.params, args.parmodel,
+                                        list_islitlet,
+                                        list_islitlet,
                                         list_csu_bar_slit_center,
                                         ['m', 'c'], linetype='--')
         pause_debugplot(debugplot=args.debugplot, pltshow=True)
