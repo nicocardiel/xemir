@@ -3,7 +3,6 @@ from __future__ import print_function
 
 import argparse
 from astropy.io import fits
-from datetime import datetime
 from copy import deepcopy
 from datetime import datetime
 import json
@@ -244,7 +243,7 @@ def expected_distorted_boundaries(islitlet, csu_bar_slit_center,
     slit_dist = (slit_height * 10) + slit_gap
 
     # undistorted (constant) y-coordinate of the lower and upper boundaries
-    ybottom = y_baseline + (islitlet - 1) * slit_dist
+    ybottom = y_baseline * 100 + (islitlet - 1) * slit_dist
     ytop = ybottom + (slit_height * 10)
 
     # avoid PyCharm warning (variables might by referenced before assignment)
