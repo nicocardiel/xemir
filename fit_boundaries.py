@@ -19,9 +19,15 @@ from emir_definitions import NAXIS1_EMIR
 from emir_definitions import NAXIS2_EMIR
 from numina.array.display.pause_debugplot import DEBUGPLOT_CODES
 
-EXPECTED_PARAMETER_LIST = ['c2', 'c4', 'ff', 'slit_gap', 'slit_height',
-                           'theta0_origin', 'theta0_slope',
-                           'x0', 'y0', 'y_baseline']
+EXPECTED_PARAMETER_LIST = (
+    'c2', 'c4', 'ff', 'slit_gap', 'slit_height',
+    'theta0_origin', 'theta0_slope', 'x0', 'y0', 'y_baseline'
+)
+
+EXPECTED_PARAMETER_LIST_EXTENDED = (
+    mainpar + '_' + subpar for mainpar in EXPECTED_PARAMETER_LIST
+    for subpar in ['a0s', 'a1s', 'a2s']
+)
 
 
 def integrity_check(bounddict):
@@ -475,28 +481,16 @@ def save_boundaries_from_params_ds9(params, paramstype,
                    'font="helvetica 10 normal roman" select=1 '
                    'highlite=1 dash=1 fixed=0 edit=1 '
                    'move=1 delete=1 include=1 source=1\n')
-    ds9_file.write('physical\n')
+    ds9_file.write('physical\n#\n')
 
     if paramstype == "simple":
-        # read individual parameters
-        slit_height = params['slit_height'].value
-        slit_gap = params['slit_gap'].value
-        y_baseline = params['y_baseline'].value
-        x0 = params['x0'].value
-        y0 = params['y0'].value
-        c2 = params['c2'].value
-        c4 = params['c4'].value
-        theta0_origin = params['theta0_origin'].value
-        theta0_slope = params['theta0_slope'].value
-        ds9_file.write('#\n# slit_height...: {0}\n'.format(slit_height))
-        ds9_file.write('# slit_gap.....: {0}\n'.format(slit_gap))
-        ds9_file.write('# y_baseline...: {0}\n'.format(y_baseline))
-        ds9_file.write('# x0...........: {0}\n'.format(x0))
-        ds9_file.write('# y0...........: {0}\n'.format(y0))
-        ds9_file.write('# c2...........: {0}\n'.format(c2))
-        ds9_file.write('# c4...........: {0}\n'.format(c4))
-        ds9_file.write('# theta0_origin: {0}\n'.format(theta0_origin))
-        ds9_file.write('# theta0_slope.: {0}\n'.format(theta0_slope))
+        for dumpar in EXPECTED_PARAMETER_LIST:
+            parvalue = params[dumpar].value
+            ds9_file.write('# {0}: {1}\n'.format(dumpar, parvalue))
+    elif paramstype == "full":
+        for dumpar in EXPECTED_PARAMETER_LIST_EXTENDED:
+            parvalue = params[dumpar].value
+            ds9_file.write('# {0}: {1}\n'.format(dumpar, parvalue))
     else:
         raise ValueError("paramstype not implemented")
 
@@ -610,12 +604,9 @@ def main(args=None):
 
     if args.pickle_input is not None:
         result = pickle.load(open(args.pickle_input.name, 'rb'))
-        # list_islitlet_lower = range(1, EMIR_NBARS + 1)
-        # list_islitlet_upper = range(1, EMIR_NBARS + 1)
-        # list_csu_bar_slit_center = [170.25] * EMIR_NBARS
-        list_islitlet_lower = [4, 23]
-        list_islitlet_upper = [9, 50]
-        list_csu_bar_slit_center = [170.25] * 2
+        list_islitlet_lower = range(1, EMIR_NBARS + 1)
+        list_islitlet_upper = range(1, EMIR_NBARS + 1)
+        list_csu_bar_slit_center = [170.25] * EMIR_NBARS
 
     else:
         # read bounddict file and check its contents
