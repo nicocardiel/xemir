@@ -406,7 +406,7 @@ def save_boundaries_from_bounddict_ds9(bounddict, ds9_filename, numpix=100):
     grism = bounddict['tags']['grism']
 
     ds9_file.write('#\n# uuid.......: {0}\n'.format(uuid))
-    ds9_file.write('# filter....: {0}\n'.format(spfilter))
+    ds9_file.write('# filter.....: {0}\n'.format(spfilter))
     ds9_file.write('# grism......: {0}\n'.format(grism))
 
     colorbox = ['green', 'green']
@@ -423,7 +423,9 @@ def save_boundaries_from_bounddict_ds9(bounddict, ds9_filename, numpix=100):
                 pol_lower_measured = np.polynomial.Polynomial(
                     tmp_dict['boundary_coef_lower']
                 )
-                xdum = np.linspace(1, NAXIS1_EMIR, num=numpix)
+                xmin_lower = tmp_dict['boundary_xmin_lower']
+                xmax_lower = tmp_dict['boundary_xmax_lower']
+                xdum = np.linspace(xmin_lower, xmax_lower, num=numpix)
                 ydum = pol_lower_measured(xdum)
                 for i in range(len(xdum) - 1):
                     ds9_file.write(
@@ -432,9 +434,13 @@ def save_boundaries_from_bounddict_ds9(bounddict, ds9_filename, numpix=100):
                     )
                     ds9_file.write(
                         ' # color={0}\n'.format(colorbox[islitlet % 2]))
+                # upper boundary
                 pol_upper_measured = np.polynomial.Polynomial(
                     tmp_dict['boundary_coef_upper']
                 )
+                xmin_upper = tmp_dict['boundary_xmin_upper']
+                xmax_upper = tmp_dict['boundary_xmax_upper']
+                xdum = np.linspace(xmin_upper, xmax_upper, num=numpix)
                 ydum = pol_upper_measured(xdum)
                 for i in range(len(xdum) - 1):
                     ds9_file.write(
@@ -443,6 +449,17 @@ def save_boundaries_from_bounddict_ds9(bounddict, ds9_filename, numpix=100):
                     )
                     ds9_file.write(
                         ' # color={0}\n'.format(colorbox[islitlet % 2]))
+                # slitlet label
+                xlabel = (xmax_lower + xmax_upper + xmin_lower + xmin_upper) / 4
+                yc_lower = pol_lower_measured(xlabel)
+                yc_upper = pol_upper_measured(xlabel)
+                ds9_file.write('text {0} {1} {{{2}}} # color={3} '
+                               'font="helvetica 10 bold '
+                               'roman"\n'.format(xlabel,
+                                                 (yc_lower + yc_upper) / 2,
+                                                 islitlet,
+                                                 colorbox[islitlet % 2]))
+
     ds9_file.close()
 
 
@@ -554,7 +571,7 @@ def main(args=None):
     parser.add_argument("--longslit",
                         help="Input bounddict corresponds to longslit",
                         action="store_true")
-    parser.add_argument("--boundparam",
+    parser.add_argument("--initparam",
                         help="JSON with initial boundary parameters",
                         type=argparse.FileType('r'))
     parser.add_argument("--numresolution",
@@ -626,39 +643,39 @@ def main(args=None):
         grism = bounddict['tags']['grism']
         spfilter = bounddict['tags']['filter']
 
-        if args.boundparam is None:
-            raise ValueError("Expected --boundparam not found")
+        if args.initparam is None:
+            raise ValueError("Expected --initparam not found")
         else:
-            # read boundparam file
-            boundparam = json.loads(open(args.boundparam.name).read())
+            # read initparam file
+            initparam = json.loads(open(args.initparam.name).read())
             # check that grism and filter match
-            grism_ = boundparam['tags']['grism']
-            spfilter_ = boundparam['tags']['filter']
+            grism_ = initparam['tags']['grism']
+            spfilter_ = initparam['tags']['filter']
             if grism != grism_:
                 raise ValueError("grism mismatch")
             if spfilter != spfilter_:
                 raise ValueError("filter mismatch")
-            islitlet_min = boundparam['tags']['islitlet_min']
-            islitlet_max = boundparam['tags']['islitlet_max']
+            islitlet_min = initparam['tags']['islitlet_min']
+            islitlet_max = initparam['tags']['islitlet_max']
 
         params = Parameters()
         for mainpar in EXPECTED_PARAMETER_LIST:
-            if mainpar not in boundparam['contents'].keys():
+            if mainpar not in initparam['contents'].keys():
                 raise ValueError('Parameter ' + mainpar + ' not found in ' +
-                                 args.boundparam.name)
+                                 args.initparam.name)
             if args.longslit:
-                dumdict = boundparam['contents'][mainpar]
+                dumdict = initparam['contents'][mainpar]
                 params.add(mainpar, value=dumdict["value"],
                            vary=dumdict["vary"])
             else:
                 for subpar in ['a0s', 'a1s', 'a2s']:
-                    if subpar not in boundparam['contents'][mainpar].keys():
+                    if subpar not in initparam['contents'][mainpar].keys():
                         raise ValueError('Subparameter ' + subpar +
                                          ' not found in ' +
-                                         args.boundparam.name +
+                                         args.initparam.name +
                                          ' under parameter ' + mainpar)
                     cpar = mainpar + '_' + subpar
-                    dumdict = boundparam['contents'][mainpar][subpar]
+                    dumdict = initparam['contents'][mainpar][subpar]
                     params.add(cpar, value=dumdict["value"],
                                vary=dumdict["vary"])
 
