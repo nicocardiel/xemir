@@ -416,7 +416,8 @@ def main(args=None):
         bounddict['instrument'] = 'EMIR'
         bounddict['meta-info'] = {}
         bounddict['meta-info']['creation_date'] = datetime.now().isoformat()
-        bounddict['meta-info']['description'] = 'slitlet boundaries'
+        bounddict['meta-info']['description'] = \
+            'slitlet boundaries from fits to continuum-lamp exposures'
         bounddict['meta-info']['recipe_name'] = 'undefined'
         bounddict['tags'] = {}
         bounddict['tags']['grism'] = args.grism
