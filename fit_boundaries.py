@@ -6,7 +6,7 @@ from astropy.io import fits
 from copy import deepcopy
 from datetime import datetime
 import json
-from lmfit import minimize, Parameters, minimizer
+from lmfit import Minimizer, Parameters, report_fit
 import matplotlib.pyplot as plt
 import numpy as np
 import pickle
@@ -30,6 +30,8 @@ EXPECTED_PARAMETER_LIST_EXTENDED = (
     mainpar + '_' + subpar for mainpar in EXPECTED_PARAMETER_LIST
     for subpar in ['a0s', 'a1s', 'a2s']
 )
+
+FUNCTION_EVALUATIONS = 0
 
 
 def integrity_check(bounddict):
@@ -347,8 +349,9 @@ def expected_distorted_boundaries(islitlet, csu_bar_slit_center,
 
 
 def fun_residuals(params, parmodel, bounddict, numresolution,
-                  islitmin, islitmax):
-    residuals = 0.0
+                  islitmin, islitmax, debugplot):
+    global FUNCTION_EVALUATIONS
+    global_residual = 0.0
     nsummed = 0
 
     read_slitlets = bounddict['contents'].keys()
@@ -380,7 +383,7 @@ def fun_residuals(params, parmodel, bounddict, numresolution,
                                          num=numresolution)
                 # distance between expected and measured polynomials
                 poly_diff = poly_lower_expected - poly_lower_measured
-                residuals += np.sum(poly_diff(xdum_lower)**2)
+                global_residual += np.sum(poly_diff(xdum_lower)**2)
                 nsummed += numresolution
                 # measured upper boundary
                 poly_upper_measured = np.polynomial.Polynomial(
@@ -394,14 +397,18 @@ def fun_residuals(params, parmodel, bounddict, numresolution,
                                          num=numresolution)
                 # distance between expected and measured polynomials
                 poly_diff = poly_upper_expected - poly_upper_measured
-                residuals += np.sum(poly_diff(xdum_upper)**2)
+                global_residual += np.sum(poly_diff(xdum_upper)**2)
                 nsummed += numresolution
 
     if nsummed > 0:
-        residuals = np.sqrt(residuals/nsummed)
-    print('>>> residuals:', residuals)
-    params.pretty_print()
-    return residuals
+        global_residual = np.sqrt(global_residual/nsummed)
+    if debugplot >= 10:
+        FUNCTION_EVALUATIONS += 1
+        print('-' * 79)
+        print('>>> Number of function evaluations:', FUNCTION_EVALUATIONS)
+        print('>>> global residual...............:', global_residual)
+        params.pretty_print()
+    return global_residual
 
 
 def overplot_boundaries_from_bounddict(bounddict, micolors, linetype='-'):
@@ -726,21 +733,30 @@ def main(args=None):
     print('-' * 79)
     print('* INITIAL PARAMETERS')
     params.pretty_print()
-    print('-' * 79)
+    pause_debugplot(args.debugplot)
 
     # carry out minimisation process (or read previous pickle file)
     if args.pickle_input is not None:
         result = pickle.load(args.pickle_input)
     else:
-        result = minimize(fun_residuals, params, method='nelder',
-                          args=(args.parmodel, bounddict, args.numresolution,
-                                islitlet_min, islitlet_max))
+        fitter = Minimizer(
+            fun_residuals, params,
+            fcn_args=(args.parmodel, bounddict, args.numresolution,
+                      islitlet_min, islitlet_max, args.debugplot)
+        )
+        result = fitter.scalar_minimize(method='Nelder-Mead', tol=1E-7)
         pickle.dump(result, open('dum.pickle', 'wb'))
 
     global_residual = fun_residuals(result.params, args.parmodel, bounddict,
-                             args.numresolution, islitlet_min, islitlet_max)
+                                    args.numresolution,
+                                    islitlet_min, islitlet_max,
+                                    args.debugplot)
     print('\n>>> global residual', global_residual)
     result.params.pretty_print()
+    print('>>> Number of function evaluations:', result.nfev)
+    pause_debugplot(args.debugplot)
+    report_fit(result.params, min_correl=0.5)
+    pause_debugplot(args.debugplot)
 
     # export resulting boundaries to ds9 region file
     save_boundaries_from_params_ds9(result.params, args.parmodel,
