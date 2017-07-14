@@ -9,6 +9,7 @@ import json
 from lmfit import minimize, Parameters, minimizer
 import matplotlib.pyplot as plt
 import numpy as np
+import pickle
 from uuid import uuid4
 
 from numina.array.display.polfit_residuals import polfit_residuals
@@ -651,6 +652,10 @@ def main(args=None):
                         help="Optional FITS image to display as background "
                              "image",
                         type=argparse.FileType('r'))
+    parser.add_argument("--pickle_input",
+                        help="Use previous pickle file instead of carrying "
+                             "out the minimisation procces",
+                        type=argparse.FileType('rb'))
     parser.add_argument("--debugplot",
                         help="Integer indicating plotting/debugging" +
                              " (default=0)",
@@ -723,9 +728,15 @@ def main(args=None):
     params.pretty_print()
     print('-' * 79)
 
-    result = minimize(fun_residuals, params, method='nelder',
-                      args=(args.parmodel, bounddict, args.numresolution,
-                            islitlet_min, islitlet_max))
+    # carry out minimisation process (or read previous pickle file)
+    if args.pickle_input is not None:
+        result = pickle.load(args.pickle_input)
+    else:
+        result = minimize(fun_residuals, params, method='nelder',
+                          args=(args.parmodel, bounddict, args.numresolution,
+                                islitlet_min, islitlet_max))
+        pickle.dump(result, open('dum.pickle', 'wb'))
+
     global_residual = fun_residuals(result.params, args.parmodel, bounddict,
                              args.numresolution, islitlet_min, islitlet_max)
     print('\n>>> global residual', global_residual)
@@ -748,22 +759,32 @@ def main(args=None):
         fittedparam['meta-info']['uuid_initparam'] = initparam['uuid']
         fittedparam['meta-info']['parmodel'] = args.parmodel
         fittedparam['uuid'] = str(uuid4())
-        if args.parmodel == "longslit":
-            for mainpar in EXPECTED_PARAMETER_LIST:
-                parvalue = result.params[mainpar].value
-                fittedparam['contents'][mainpar]['value'] = parvalue
-            # compute median csu_bar_slit_center
-            dumlist = []
-            for islitlet, csu_bar_slit_center in \
-                    zip(list_islitlet, list_csu_bar_slit_center):
-                if islitlet_min <= islitlet <= islitlet_max:
-                    dumlist.append(csu_bar_slit_center)
-            median_csu_bar_slit_center = np.median(np.array(dumlist))
-            fittedparam['meta-info']['median_csu_bar_slit_center'] = \
+        for mainpar in EXPECTED_PARAMETER_LIST:
+            if mainpar not in initparam['contents'].keys():
+                raise ValueError('Parameter ' + mainpar +
+                                 ' not found in ' + args.initparam.name)
+            if args.parmodel == "longslit":
+                fittedparam['contents'][mainpar]['value'] = \
+                    result.params[mainpar].value
+                # compute median csu_bar_slit_center (only in longslit mode)
+                dumlist = []
+                for islitlet, csu_bar_slit_center in \
+                        zip(list_islitlet, list_csu_bar_slit_center):
+                    if islitlet_min <= islitlet <= islitlet_max:
+                        dumlist.append(csu_bar_slit_center)
+                median_csu_bar_slit_center = np.median(np.array(dumlist))
+                fittedparam['meta-info']['median_csu_bar_slit_center'] = \
                 median_csu_bar_slit_center
-        else:
-            raise ValueError("parmodel " + args.parmodel +
-                             " is not implemented")
+            else:
+                for subpar in ['a0s', 'a1s', 'a2s']:
+                    if subpar not in initparam['contents'][mainpar].keys():
+                        raise ValueError(
+                            'Subparameter ' + subpar + ' not found in ' +
+                            args.initparam.name + ' under parameter ' + mainpar
+                        )
+                    cpar = mainpar + '_' + subpar
+                    fittedparam['contents'][mainpar][subpar]['value'] = \
+                        result.params[cpar].value
         with open(args.fittedparam.name, 'w') as fstream:
             json.dump(fittedparam, fstream, indent=2, sort_keys=True)
 
@@ -786,13 +807,9 @@ def main(args=None):
             ax.set_ylim([-0.5, NAXIS2_EMIR + 0.5])
             ax.set_xlabel('X axis (from 1 to NAXIS1)')
             ax.set_xlabel('Y axis (from 1 to NAXIS2)')
-            if args.bounddict is not None:
-                ax.set_title(args.bounddict.name)
-            else:
-                ax.set_title(args.pickle_input.name)
+            ax.set_title(args.bounddict.name)
         # boundaries from bounddict
-        if args.bounddict is not None:
-            overplot_boundaries_from_bounddict(bounddict, ['r', 'b'])
+        overplot_boundaries_from_bounddict(bounddict, ['r', 'b'])
         # expected boundaries
         overplot_boundaries_from_params(ax, result.params, args.parmodel,
                                         list_islitlet,
