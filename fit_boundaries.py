@@ -782,6 +782,8 @@ def main(args=None):
             if args.parmodel == "longslit":
                 fittedparam['contents'][mainpar]['value'] = \
                     result.params[mainpar].value
+                fittedparam['contents'][mainpar]['initial'] = \
+                    params[mainpar].value
                 # compute median csu_bar_slit_center (only in longslit mode)
                 dumlist = []
                 for islitlet, csu_bar_slit_center in \
@@ -801,6 +803,8 @@ def main(args=None):
                     cpar = mainpar + '_' + subpar
                     fittedparam['contents'][mainpar][subpar]['value'] = \
                         result.params[cpar].value
+                    fittedparam['contents'][mainpar][subpar]['initial'] = \
+                        params[cpar].value
         with open(args.fittedparam.name, 'w') as fstream:
             json.dump(fittedparam, fstream, indent=2, sort_keys=True)
 
