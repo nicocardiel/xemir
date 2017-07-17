@@ -132,6 +132,8 @@ def exvp_scalar(x, y, x0, y0, c2, c4, theta0, ff):
         equation, in units of 1E9
     theta0 : float
         Additional rotation angle (radians).
+    ff : float
+        Scaling factor to be applied to the Y axis.
 
     Returns
     -------
@@ -190,6 +192,8 @@ def exvp(x, y, x0, y0, c2, c4, theta0, ff):
         equation.
     theta0 : float
         Additional rotation angle (radians).
+    ff : float
+        Scaling factor to be applied to the Y axis.
 
     Returns
     -------
@@ -219,6 +223,33 @@ def expected_distorted_boundaries(islitlet, csu_bar_slit_center,
                                   border, params, parmodel,
                                   numpts, deg, debugplot=0):
     """Return polynomial coefficients of expected distorted boundaries.
+
+    islitlet : int
+        Number of slitlet.
+    csu_bar_slit_center : float
+        CSU bar slit center, in mm.
+    border : str
+        Boundary border to be computed. Allowed values are 'lower',
+        'upper' or 'both'.
+    params : :class:`~lmfit.parameter.Parameters`
+        Parameters to be employed in the prediction of the distorted
+        boundaries.
+    parmodel : str
+        Model to be assumed. Allowed values are 'longslit' and
+        'multislit'.
+    numpts : int
+        Number of points in which the X-range interval is subdivided
+        before fitting the returned polynomial(s).
+    deg : int
+        Degree of the fitted polynomial.
+    debugplot : int
+        Debugging level for messages and plots. For details see
+        'numina.array.display.pause_debugplot.py'.
+
+    Returns
+    -------
+    poly_lower and/or poly_upper : numpy.polynomial.Polynomial()
+        Lower and/or upper polynomial fits to expected boundaries.
 
     """
 
@@ -350,17 +381,47 @@ def expected_distorted_boundaries(islitlet, csu_bar_slit_center,
 
 def fun_residuals(params, parmodel, bounddict, numresolution,
                   islitmin, islitmax, debugplot):
+    """Function to be minimised.
+
+    Parameters
+    ----------
+    params : :class:`~lmfit.parameter.Parameters`
+        Parameters to be employed in the prediction of the distorted
+        boundaries.
+    parmodel : str
+        Model to be assumed. Allowed values are 'longslit' and
+        'multislit'.
+    bounddict : JSON structure
+        Structure employed to store bounddict information.
+    numresolution : int
+        Number of points in which the X-range interval is subdivided
+        before computing the residuals.
+    islitmin : int
+        Minimum slitlet number.
+    islitmax : int
+        Maximum slitlet number.
+    debugplot : int
+        Debugging level for messages and plots. For details see
+        'numina.array.display.pause_debugplot.py'.
+
+    Returns
+    -------
+    global_residual : float
+        Squared root of the averaged sum of squared residuals.
+
+    """
+
     global FUNCTION_EVALUATIONS
     global_residual = 0.0
     nsummed = 0
 
     read_slitlets = bounddict['contents'].keys()
-    #read_slitlets.sort()  # this is not really necessary
+    # read_slitlets.sort()  # this is not really necessary
     for tmp_slitlet in read_slitlets:
         islitlet = int(tmp_slitlet[7:])
         if islitmin <= islitlet <= islitmax:
             read_dateobs = bounddict['contents'][tmp_slitlet].keys()
-            #read_dateobs.sort()  # this is not really necessary
+            # read_dateobs.sort()  # this is not really necessary
             for tmp_dateobs in read_dateobs:
                 tmp_dict = bounddict['contents'][tmp_slitlet][tmp_dateobs]
                 csu_bar_slit_center = tmp_dict['csu_bar_slit_center']
@@ -412,6 +473,20 @@ def fun_residuals(params, parmodel, bounddict, numresolution,
 
 
 def overplot_boundaries_from_bounddict(bounddict, micolors, linetype='-'):
+    """Overplot boundaries on current plot.
+
+    Parameters
+    ----------
+    bounddict : JSON structure
+        Structure employed to store bounddict information.
+    micolors : list of char
+        List with two characters corresponding to alternating colors
+        for odd and even slitlets.
+    linetype : str
+        Line type.
+
+    """
+
     for islitlet in range(1, EMIR_NBARS + 1):
         tmpcolor = micolors[islitlet % 2]
         tmp_slitlet = 'slitlet' + str(islitlet).zfill(2)
@@ -439,6 +514,33 @@ def overplot_boundaries_from_params(ax, params, parmodel,
                                     list_islitlet_upper,
                                     list_csu_bar_slit_center,
                                     micolors, linetype='--'):
+    """Overplot boundaries computed from fitted parameters.
+
+    Parameters
+    ----------
+    ax : matplotlib axes
+        Current plot axes.
+    params : :class:`~lmfit.parameter.Parameters`
+        Parameters to be employed in the prediction of the distorted
+        boundaries.
+    parmodel : str
+        Model to be assumed. Allowed values are 'longslit' and
+        'multislit'.
+    list_islitlet_lower : list of integers
+        Slitlet numbers corresponding to the lower boundary of pseudo
+        longslits.
+    list_islitlet_upper : list of integers
+        Slitlet numbers corresponding to the upper bounday of pseudo
+        longslits.
+    list_csu_bar_slit_center : list of floats
+        CSU bar slit centers of the pseudo longslits.
+    micolors : list of char
+        List with two characters corresponding to alternating colors
+        for odd and even slitlets.
+    linetype : str
+        Line type.
+
+    """
 
     for islitlet_lower, islitlet_upper, csu_bar_slit_center in \
             zip(list_islitlet_lower,
@@ -478,6 +580,21 @@ def overplot_boundaries_from_params(ax, params, parmodel,
 
 
 def save_boundaries_from_bounddict_ds9(bounddict, ds9_filename, numpix=100):
+    """Export to ds9 region file the boundaries in bounddict.
+
+    Parameters
+    ----------
+    bounddict : JSON structure
+        Structure employed to store bounddict information.
+    ds9_filename : str
+        Output file name for the ds9 region file.
+    numpix : int
+        Number of points in which the X-range interval is subdivided
+        in order to save each boundary as a connected set of line
+        segments.
+
+    """
+
     ds9_file = open(ds9_filename, 'w')
 
     ds9_file.write('# Region file format: DS9 version 4.1\n')
@@ -491,9 +608,9 @@ def save_boundaries_from_bounddict_ds9(bounddict, ds9_filename, numpix=100):
     spfilter = bounddict['tags']['filter']
     grism = bounddict['tags']['grism']
 
-    ds9_file.write('#\n# uuid.......: {0}\n'.format(uuid))
-    ds9_file.write('# filter.....: {0}\n'.format(spfilter))
-    ds9_file.write('# grism......: {0}\n'.format(grism))
+    ds9_file.write('#\n# uuid (boundict file): {0}\n'.format(uuid))
+    ds9_file.write('# filter..............: {0}\n'.format(spfilter))
+    ds9_file.write('# grism...............: {0}\n'.format(grism))
 
     colorbox = ['green', 'green']
     for islitlet in range(1, EMIR_NBARS + 1):
@@ -554,7 +671,42 @@ def save_boundaries_from_params_ds9(params, parmodel,
                                     list_islitlet_lower,
                                     list_islitlet_upper,
                                     list_csu_bar_slit_center,
+                                    uuid, grism, spfilter,
                                     ds9_filename, numpix=100):
+    """Export to ds9 region file the boundaries parametrised with params.
+
+    Parameters
+    ----------
+    params : :class:`~lmfit.parameter.Parameters`
+        Parameters to be employed in the prediction of the distorted
+        boundaries.
+    parmodel : str
+        Model to be assumed. Allowed values are 'longslit' and
+        'multislit'.
+    list_islitlet_lower : list of integers
+        Slitlet numbers corresponding to the lower boundary of pseudo
+        longslits.
+    list_islitlet_upper : list of integers
+        Slitlet numbers corresponding to the upper bounday of pseudo
+        longslits.
+    list_csu_bar_slit_center : list of floats
+        CSU bar slit centers of the pseudo longslits.
+    uuid: int
+        UUID corresponding to the bounddict file that has been employed
+        to fit the parameters 'params'.
+    grism : str
+        Employed grism.
+    spfilter : str
+        Employed filter.
+    ds9_filename : str
+        Output file name for the ds9 region file.
+    numpix : int
+        Number of points in which the X-range interval is subdivided
+        in order to save each boundary as a connected set of line
+        segments.
+
+    """
+
     ds9_file = open(ds9_filename, 'w')
 
     ds9_file.write('# Region file format: DS9 version 4.1\n')
@@ -563,6 +715,10 @@ def save_boundaries_from_params_ds9(params, parmodel,
                    'highlite=1 dash=1 fixed=0 edit=1 '
                    'move=1 delete=1 include=1 source=1\n')
     ds9_file.write('physical\n#\n')
+
+    ds9_file.write('#\n# uuid (boundict file): {0}\n'.format(uuid))
+    ds9_file.write('# filter..............: {0}\n'.format(spfilter))
+    ds9_file.write('# grism...............: {0}\n'.format(grism))
 
     if parmodel == "longslit":
         for dumpar in EXPECTED_PARAMETER_LIST:
@@ -694,6 +850,7 @@ def main(args=None):
             csu_bar_slit_center = tmp_dict['csu_bar_slit_center']
             list_csu_bar_slit_center.append(csu_bar_slit_center)
 
+    uuid = bounddict['uuid']
     grism = bounddict['tags']['grism']
     spfilter = bounddict['tags']['filter']
 
@@ -708,6 +865,11 @@ def main(args=None):
         raise ValueError("filter mismatch")
     islitlet_min = initparam['tags']['islitlet_min']
     islitlet_max = initparam['tags']['islitlet_max']
+    # check that parameter model is correct
+    parmodel_  = initparam['meta-info']['parmodel']
+    if args.parmodel != parmodel_:
+        raise ValueError("Unexpected parmodel: ", parmodel_,
+                         " in file ", args.initparam.name)
 
     params = Parameters()
     for mainpar in EXPECTED_PARAMETER_LIST:
@@ -763,6 +925,7 @@ def main(args=None):
                                     list_islitlet,
                                     list_islitlet,
                                     list_csu_bar_slit_center,
+                                    uuid, grism, spfilter,
                                     'ds9_fittedpar.reg')
 
     if args.fittedparam is not None:
@@ -770,10 +933,10 @@ def main(args=None):
         fittedparam['meta-info']['creation_date'] = datetime.now().isoformat()
         fittedparam['meta-info']['description'] \
             = "fitted boundary parameters"
+        fittedparam['meta-info']['function_evaluations'] = result.nfev
         fittedparam['meta-info']['global_residual'] = global_residual
         fittedparam['meta-info']['uuid_bounddict'] = bounddict['uuid']
         fittedparam['meta-info']['uuid_initparam'] = initparam['uuid']
-        fittedparam['meta-info']['parmodel'] = args.parmodel
         fittedparam['uuid'] = str(uuid4())
         for mainpar in EXPECTED_PARAMETER_LIST:
             if mainpar not in initparam['contents'].keys():
