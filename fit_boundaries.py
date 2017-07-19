@@ -339,7 +339,7 @@ def expected_distorted_boundaries(islitlet, csu_bar_slit_center,
                      y_baseline_a1s * csu_bar_slit_center + \
                      y_baseline_a2s * csu_bar_slit_center**2
 
-    theta0 = theta0_origin/10000 + theta0_slope/100000 * islitlet
+    theta0 = theta0_origin/1E3 + theta0_slope/1E4 * islitlet
 
     if border not in ['lower', 'upper', 'both']:
         raise ValueError('Unexpected border:', border)
