@@ -24,6 +24,7 @@ from numina.array.display.polfit_residuals import \
     polfit_residuals_with_sigma_rejection
 from numina.array.display.ximplot import ximplot
 from numina.array.display.ximshow import ximshow
+from numina.array.display.pause_debugplot import DEBUGPLOT_CODES
 
 from emirdrp.core import EMIR_NBARS
 
@@ -268,7 +269,7 @@ class EmirSlitlet:
             raise ValueError("slitlet number " + str(slitlet_number) +
                              " is outside valid range for EMIR")
 
-        if debugplot not in [0, 1, 2, 10, 11, 12]:
+        if debugplot not in DEBUGPLOT_CODES:
             raise ValueError("debugplot " + str(debugplot) +
                              " is not a valid integer")
 

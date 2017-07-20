@@ -418,7 +418,7 @@ if __name__ == "__main__":
 
     for slitlet_number in [2]:
         generate_arc_mapping(
-            source_data_dir="/Users/cardiel/w/GTC/emir/" + \
+            source_data_dir="/Volumes/NicoPassport/EMIR/" + \
                   "20160331_arccalibration_data/GRISM" + grism + "/",
             grism=grism, slitlet_number=slitlet_number, poly_degree_wfit=3,
             order_tt=3, megadict=megadict, debugplot=0)
