@@ -7,7 +7,7 @@ import numpy as np
 import os.path
 
 from numina.array.display.pause_debugplot import pause_debugplot
-from slitlet_arrangement import SlitletArrangement
+from csu_configuration import CsuConfiguration
 
 from emirdrp.core import EMIR_NBARS
 from numina.array.display.pause_debugplot import DEBUGPLOT_CODES
@@ -59,8 +59,8 @@ def display_slitlet_arrangement(fileobj, bbox=None, debugplot=0):
     rotang = image_header['rotang']
 
     # define slitlet arrangement
-    slt_arrang = SlitletArrangement()
-    slt_arrang.define_from_fits(fileobj)
+    csu_config = CsuConfiguration()
+    csu_config.define_from_fits(fileobj)
 
     # display arrangement
     if debugplot >= 10:
@@ -69,31 +69,31 @@ def display_slitlet_arrangement(fileobj, bbox=None, debugplot=0):
         for i in range(EMIR_NBARS):
             ibar = i + 1
             print("{0:4d} {1:8.3f} {2:8.3f} {3:8.3f} {4:7.3f}".format(
-                ibar, slt_arrang.csu_bar_left[i], slt_arrang.csu_bar_right[i],
-                slt_arrang.csu_bar_slit_center[i],
-                slt_arrang.csu_bar_slit_width[i]))
+                ibar, csu_config.csu_bar_left[i], csu_config.csu_bar_right[i],
+                csu_config.csu_bar_slit_center[i],
+                csu_config.csu_bar_slit_width[i]))
         print(
             "---> {0:8.3f} {1:8.3f} {2:8.3f} {3:7.3f} <- mean (all)".format(
-                np.mean(slt_arrang.csu_bar_left),
-                np.mean(slt_arrang.csu_bar_right),
-                np.mean(slt_arrang.csu_bar_slit_center),
-                np.mean(slt_arrang.csu_bar_slit_width)
+                np.mean(csu_config.csu_bar_left),
+                np.mean(csu_config.csu_bar_right),
+                np.mean(csu_config.csu_bar_slit_center),
+                np.mean(csu_config.csu_bar_slit_width)
             )
         )
         print(
             "---> {0:8.3f} {1:8.3f} {2:8.3f} {3:7.3f} <- mean (odd)".format(
-                np.mean(slt_arrang.csu_bar_left[::2]),
-                np.mean(slt_arrang.csu_bar_right[::2]),
-                np.mean(slt_arrang.csu_bar_slit_center[::2]),
-                np.mean(slt_arrang.csu_bar_slit_width[::2])
+                np.mean(csu_config.csu_bar_left[::2]),
+                np.mean(csu_config.csu_bar_right[::2]),
+                np.mean(csu_config.csu_bar_slit_center[::2]),
+                np.mean(csu_config.csu_bar_slit_width[::2])
             )
         )
         print(
             "---> {0:8.3f} {1:8.3f} {2:8.3f} {3:7.3f} <- mean (even)".format(
-                np.mean(slt_arrang.csu_bar_left[1::2]),
-                np.mean(slt_arrang.csu_bar_right[1::2]),
-                np.mean(slt_arrang.csu_bar_slit_center[1::2]),
-                np.mean(slt_arrang.csu_bar_slit_width[1::2])
+                np.mean(csu_config.csu_bar_left[1::2]),
+                np.mean(csu_config.csu_bar_right[1::2]),
+                np.mean(csu_config.csu_bar_slit_center[1::2]),
+                np.mean(csu_config.csu_bar_slit_width[1::2])
             )
         )
 
@@ -116,19 +116,19 @@ def display_slitlet_arrangement(fileobj, bbox=None, debugplot=0):
         for i in range(EMIR_NBARS):
             ibar = i + 1
             ax.add_patch(patches.Rectangle(
-                (slt_arrang.csu_bar_left[i], ibar-0.5),
-                slt_arrang.csu_bar_slit_width[i], 1.0))
-            ax.plot([0., slt_arrang.csu_bar_left[i]], [ibar, ibar], 'o-')
-            ax.plot([slt_arrang.csu_bar_right[i], 341.5], [ibar, ibar], 'o-')
+                (csu_config.csu_bar_left[i], ibar-0.5),
+                csu_config.csu_bar_slit_width[i], 1.0))
+            ax.plot([0., csu_config.csu_bar_left[i]], [ibar, ibar], 'o-')
+            ax.plot([csu_config.csu_bar_right[i], 341.5], [ibar, ibar], 'o-')
         plt.title("File: " + fileobj.name + "\ngrism=" + grism +
                   ", filter=" + spfilter + ", rotang=" + str(round(rotang,2)))
         pause_debugplot(debugplot, pltshow=True)
 
     # return results
-    return slt_arrang.csu_bar_left, \
-           slt_arrang.csu_bar_right, \
-           slt_arrang.csu_bar_slit_center, \
-           slt_arrang.csu_bar_slit_width
+    return csu_config.csu_bar_left, \
+           csu_config.csu_bar_right, \
+           csu_config.csu_bar_slit_center, \
+           csu_config.csu_bar_slit_width
 
 
 def main(args=None):
