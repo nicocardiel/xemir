@@ -17,5 +17,9 @@ alias EMIR_overplot_bounddict=\
 'python ~/s/xemir/overplot_bounddict.py'
 
 # compute slitlet boundaries from continuum lamp exposures
-alias EMIR_slitlet_boundaries_from_continuum.py=\
+alias EMIR_slitlet_boundaries_from_continuum=\
 'python ~/s/xemir/slitlet_boundaries_from_continuum.py'
+
+# test script
+alias EMIR_test=\
+'python ~/s/xemir/test.py'
