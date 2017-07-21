@@ -87,9 +87,6 @@ class SlitletArrangement:
         extnum : int
             Extension number (first extension is 0)
 
-        Returns
-        -------
-
         """
 
         # read input FITS file
