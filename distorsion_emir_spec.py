@@ -142,12 +142,12 @@ def exvp(x, y, x0, y0, c1, c2):
 
 def main(args=None):
     parser = argparse.ArgumentParser(prog='distortion_emir_spec')
-    parser.add_argument("filename",
-                        help="FITS file",
+    parser.add_argument("fitsfile",
+                        help="FITS file name",
                         type=argparse.FileType('r'))
     args = parser.parse_args(args)
 
-    hdulist = fits.open(args.filename.name)
+    hdulist = fits.open(args.fitsfile.name)
     image2d = hdulist[0].data
     hdulist.close()
 
