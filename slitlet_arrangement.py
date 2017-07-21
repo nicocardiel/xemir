@@ -22,6 +22,14 @@ class SlitletArrangement:
     csu_bar_slit_width : list of floats
         Slitlet width (mm), computed as the distance between the two
         bars defining the slitlet.
+    xdtu : float
+        XDTU fits keyword value.
+    ydtu : float
+        YDTU fits keyword value.
+    xdtu_0 : float
+        XDTU_0 fits keyword value.
+    ydtu_0 : float
+        YDTU_0 fits keyword value.
     defined : bool
         Indicates whether the CSU parameters have been properly defined.
 
@@ -32,32 +40,34 @@ class SlitletArrangement:
         self.csu_bar_right = None
         self.csu_bar_slit_center = None
         self.csu_bar_slit_width = None
+        self.xdtu = None
+        self.ydtu = None
+        self.xdtu_0 = None
+        self.ydtu_0 = None
         self.defined = False
 
     def __str__(self):
         output = "<SlitletArrangement instance>\n"
-        for ibar in range(EMIR_NBARS):
-            cbar = str(ibar).zfill(2)
-            output += "- [" + cbar + "] left.......:"
+        output += "XDTU, YDTU, XDTU_0, YDTU_0: "
+        if self.defined:
+            strdum = "{0:7.2f} {1:7.2f} {2:7.2f} {3:7.2f}\n".format(
+                self.xdtu, self.ydtu, self.xdtu_0, self.ydtu_0
+            )
+            output += strdum
+        else:
+            output += 4 * "   None " + "\n"
+        for i in range(EMIR_NBARS):
+            ibar = i + 1
+            strdum = "{0:2d}--> left, right, center, width: ".format(ibar)
+            output += strdum
             if self.defined:
-                output += str(self.csu_bar_left[ibar]) + "\n"
+                strdum = "{0:6.2f} {1:6.2f} {2:6.2f} {3:6.2f}\n".format(
+                    self.csu_bar_left[i], self.csu_bar_right[i],
+                    self.csu_bar_slit_center[i], self.csu_bar_slit_width[i]
+                )
+                output += strdum
             else:
-                output += "None\n"
-            output += "- [" + cbar + "] right......:"
-            if self.defined:
-                output += str(self.csu_bar_right[ibar]) + "\n"
-            else:
-                output += "None\n"
-            output += "- [" + cbar + "] slit center:"
-            if self.defined:
-                output += str(self.csu_bar_slit_center[ibar]) + "\n"
-            else:
-                output += "None\n"
-            output += "- [" + cbar + "]slit width.:"
-            if self.defined:
-                output += str(self.csu_bar_slit_width[ibar]) + "\n"
-            else:
-                output += "None\n"
+                output += 4 * "  None " + "\n"
         return output
 
     def define_from_fits(self, fitsfile, extnum=0):
@@ -80,6 +90,12 @@ class SlitletArrangement:
         hdulist = fits.open(fitsfile)
         image_header = hdulist[extnum].header
         hdulist.close()
+
+        # define DTU variables
+        self.xdtu = image_header['xdtu']
+        self.ydtu = image_header['ydtu']
+        self.xdtu_0 = image_header['xdtu_0']
+        self.ydtu_0 = image_header['ydtu_0']
 
         # declare arrays to store CSU bar configuration
         self.csu_bar_left = []
