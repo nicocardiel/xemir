@@ -6,7 +6,7 @@ from astropy.io import fits
 from emirdrp.core import EMIR_NBARS
 
 
-class CsuConfiguration:
+class CsuConfiguration(object):
     """CSU Configuration class definition.
 
     Attributes

@@ -4,7 +4,7 @@ from __future__ import print_function
 from astropy.io import fits
 
 
-class DtuConfiguration:
+class DtuConfiguration(object):
     """DTU Configuration class definition.
 
     Attributes
