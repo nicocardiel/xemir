@@ -7,6 +7,7 @@ import json
 import numpy as np
 from numpy.polynomial import Polynomial
 import os.path
+import sys
 
 from numina.array.display.pause_debugplot import pause_debugplot
 from numina.array.display.ximshow import ximshow
@@ -84,8 +85,13 @@ def main(args=None):
                         type=argparse.FileType('r'))
     parser.add_argument("tuple_slit_numbers",
                         help="Tuple n1[,n2[,step]] to define slitlet numbers")
-
+    parser.add_argument("--echo",
+                        help="Display full command line",
+                        action="store_true")
     args = parser.parse_args()
+
+    if args.echo:
+        print('\033[1m\033[31mExecuting: ' + ' '.join(sys.argv) + '\033[0m\n')
 
     # read slitlet numbers to be computed
     tmp_str = args.tuple_slit_numbers.split(",")

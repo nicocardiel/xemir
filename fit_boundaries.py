@@ -10,6 +10,7 @@ from lmfit import Minimizer, Parameters, report_fit
 import matplotlib.pyplot as plt
 import numpy as np
 import pickle
+import sys
 from uuid import uuid4
 
 from numina.array.display.polfit_residuals import polfit_residuals
@@ -824,7 +825,13 @@ def main(args=None):
                              " (default=0)",
                         type=int, default=0,
                         choices=DEBUGPLOT_CODES)
+    parser.add_argument("--echo",
+                        help="Display full command line",
+                        action="store_true")
     args = parser.parse_args(args)
+
+    if args.echo:
+        print('\033[1m\033[31mExecuting: ' + ' '.join(sys.argv) + '\033[0m\n')
 
     if args.background_image is not None and args.debugplot % 10 == 0:
         raise ValueError("--background_image requires --debugplot value "

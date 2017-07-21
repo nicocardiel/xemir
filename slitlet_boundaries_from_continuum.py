@@ -511,7 +511,13 @@ def main(args=None):
                              " (default=0)",
                         type=int, default=0,
                         choices=DEBUGPLOT_CODES)
+    parser.add_argument("--echo",
+                        help="Display full command line",
+                        action="store_true")
     args = parser.parse_args()
+
+    if args.echo:
+        print('\033[1m\033[31mExecuting: ' + ' '.join(sys.argv) + '\033[0m\n')
 
     # read slitlet numbers to be computed
     tmp_str = args.tuple_slit_numbers.split(",")

@@ -4,6 +4,7 @@ from __future__ import print_function
 import argparse
 from astropy.io import fits
 import numpy as np
+import sys
 
 from emirdrp.core import EMIR_NBARS
 
@@ -145,7 +146,13 @@ def main(args=None):
     parser.add_argument("fitsfile",
                         help="FITS file name",
                         type=argparse.FileType('r'))
+    parser.add_argument("--echo",
+                        help="Display full command line",
+                        action="store_true")
     args = parser.parse_args(args)
+
+    if args.echo:
+        print('\033[1m\033[31mExecuting: ' + ' '.join(sys.argv) + '\033[0m\n')
 
     hdulist = fits.open(args.fitsfile.name)
     image2d = hdulist[0].data

@@ -5,6 +5,7 @@ import argparse
 from astropy.io import fits
 import numpy as np
 import os.path
+import sys
 
 from numina.array.display.pause_debugplot import pause_debugplot
 from csu_configuration import CsuConfiguration
@@ -148,7 +149,13 @@ def main(args=None):
                              " (default=12)",
                         default=12, type=int,
                         choices=DEBUGPLOT_CODES)
+    parser.add_argument("--echo",
+                        help="Display full command line",
+                        action="store_true")
     args = parser.parse_args(args)
+
+    if args.echo:
+        print('\033[1m\033[31mExecuting: ' + ' '.join(sys.argv) + '\033[0m\n')
 
     # read bounding box
     if args.bbox is None:
