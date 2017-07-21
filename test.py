@@ -7,6 +7,8 @@ import numpy as np
 
 from numina.array.display.ximshow import ximshow_file
 
+from csu_configuration import CsuConfiguration
+from dtu_configuration import DtuConfiguration
 from spec_2d_image import Spec2DImage
 
 from numina.array.display.pause_debugplot import DEBUGPLOT_CODES
@@ -25,6 +27,15 @@ def main(args=None):
                         default=12, type=int,
                         choices=DEBUGPLOT_CODES)
     args = parser.parse_args(args)
+
+    csu_conf = CsuConfiguration()
+    csu_conf.define_from_fits(args.fitsfile)
+    print(csu_conf)
+    raw_input("Pause...")
+    dtu_conf = DtuConfiguration()
+    dtu_conf.define_from_fits(args.fitsfile)
+    print(dtu_conf)
+    raw_input("Pause...")
 
     ximshow_file(args.fitsfile.name, debugplot=args.debugplot)
 

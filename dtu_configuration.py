@@ -36,7 +36,7 @@ class DtuConfiguration:
         self.defined = False
 
     def __str__(self):
-        output = "<SlitletArrangement instance>\n"
+        output = "<DtuConfiguration instance>\n"
         if self.defined:
             strdum = "- XDTU..: {0:8.3f}\n".format(self.xdtu)
             output += strdum
@@ -59,12 +59,12 @@ class DtuConfiguration:
             output += "- ZDTU_0:  None\n"
         return output
 
-    def define_from_fits(self, fitsfile, extnum=0):
+    def define_from_fits(self, fitsobj, extnum=0):
         """Define class members from header information in FITS file.
 
         Parameters
         ----------
-        fitsfile: file object
+        fitsobj: file object
             FITS file whose header contains the DTU information
             needed to initialise the members of this class.
         extnum : int
@@ -73,7 +73,7 @@ class DtuConfiguration:
         """
 
         # read input FITS file
-        hdulist = fits.open(fitsfile)
+        hdulist = fits.open(fitsobj)
         image_header = hdulist[extnum].header
         hdulist.close()
 

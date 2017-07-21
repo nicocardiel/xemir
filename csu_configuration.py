@@ -50,12 +50,12 @@ class CsuConfiguration:
                 output += 4 * "   None " + "\n"
         return output
 
-    def define_from_fits(self, fitsfile, extnum=0):
+    def define_from_fits(self, fitsobj, extnum=0):
         """Define class members from header information in FITS file.
 
         Parameters
         ----------
-        fitsfile: file object
+        fitsobj: file object
             FITS file whose header contains the CSU bar information
             needed to initialise the members of this class.
         extnum : int
@@ -64,7 +64,7 @@ class CsuConfiguration:
         """
 
         # read input FITS file
-        hdulist = fits.open(fitsfile)
+        hdulist = fits.open(fitsobj)
         image_header = hdulist[extnum].header
         hdulist.close()
 
