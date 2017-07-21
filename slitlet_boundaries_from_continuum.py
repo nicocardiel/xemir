@@ -561,13 +561,13 @@ def main(args=None):
         bounddict['tags']['filter'] = args.filter
         bounddict['uuid'] = str(uuid4())
         bounddict['contents'] = {}
-        print('\n>>> Generating new bounddict from scratch')
+        print('>>> Generating new bounddict from scratch')
     else:
         if not os.path.isfile(bounddict_file):
             raise ValueError("File " + bounddict_file + " not found!")
         else:
             bounddict = json.loads(open(bounddict_file).read())
-            print('\n>>> Initializing bounddict from previous file:')
+            print('>>> Initializing bounddict from previous file:')
             print(bounddict_file)
 
     # if input file is a txt file, assume it is a list of FITS files
