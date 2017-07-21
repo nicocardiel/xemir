@@ -48,26 +48,32 @@ class SlitletArrangement:
 
     def __str__(self):
         output = "<SlitletArrangement instance>\n"
-        output += "XDTU, YDTU, XDTU_0, YDTU_0: "
         if self.defined:
-            strdum = "{0:7.2f} {1:7.2f} {2:7.2f} {3:7.2f}\n".format(
-                self.xdtu, self.ydtu, self.xdtu_0, self.ydtu_0
-            )
+            strdum = "- XDTU..: {0:8.3f}\n".format(self.xdtu)
+            output += strdum
+            strdum = "- YDTU..: {0:8.3f}\n".format(self.ydtu)
+            output += strdum
+            strdum = "- XDTU_0: {0:8.3f}\n".format(self.xdtu_0)
+            output += strdum
+            strdum = "- YDTU_0: {0:8.3f}\n".format(self.ydtu_0)
             output += strdum
         else:
-            output += 4 * "   None " + "\n"
+            output += "- XDTU..:  None\n"
+            output += "- YDTU..:  None\n"
+            output += "- XDTU_0:  None\n"
+            output += "- YDTU_0:  None\n"
         for i in range(EMIR_NBARS):
             ibar = i + 1
-            strdum = "{0:2d}--> left, right, center, width: ".format(ibar)
+            strdum = "- [BAR{0:2d}] left, right, center, width: ".format(ibar)
             output += strdum
             if self.defined:
-                strdum = "{0:6.2f} {1:6.2f} {2:6.2f} {3:6.2f}\n".format(
+                strdum = "{0:7.3f} {1:7.3f} {2:7.3f} {3:7.3f}\n".format(
                     self.csu_bar_left[i], self.csu_bar_right[i],
                     self.csu_bar_slit_center[i], self.csu_bar_slit_width[i]
                 )
                 output += strdum
             else:
-                output += 4 * "  None " + "\n"
+                output += 4 * "   None " + "\n"
         return output
 
     def define_from_fits(self, fitsfile, extnum=0):
@@ -97,7 +103,7 @@ class SlitletArrangement:
         self.xdtu_0 = image_header['xdtu_0']
         self.ydtu_0 = image_header['ydtu_0']
 
-        # declare arrays to store CSU bar configuration
+        # declare arrays to store configuration of CSU bars
         self.csu_bar_left = []
         self.csu_bar_right = []
         self.csu_bar_slit_center = []
