@@ -6,8 +6,8 @@ from astropy.io import fits
 from emirdrp.core import EMIR_NBARS
 
 
-class SlitletArrangement:
-    """SlitletArangement definition.
+class CsuConfiguration:
+    """CSU Configuration class definition.
 
     Attributes
     ----------
@@ -22,14 +22,6 @@ class SlitletArrangement:
     csu_bar_slit_width : list of floats
         Slitlet width (mm), computed as the distance between the two
         bars defining the slitlet.
-    xdtu : float
-        XDTU fits keyword value.
-    ydtu : float
-        YDTU fits keyword value.
-    xdtu_0 : float
-        XDTU_0 fits keyword value.
-    ydtu_0 : float
-        YDTU_0 fits keyword value.
     defined : bool
         Indicates whether the CSU parameters have been properly defined.
 
@@ -40,28 +32,10 @@ class SlitletArrangement:
         self.csu_bar_right = None
         self.csu_bar_slit_center = None
         self.csu_bar_slit_width = None
-        self.xdtu = None
-        self.ydtu = None
-        self.xdtu_0 = None
-        self.ydtu_0 = None
         self.defined = False
 
     def __str__(self):
-        output = "<SlitletArrangement instance>\n"
-        if self.defined:
-            strdum = "- XDTU..: {0:8.3f}\n".format(self.xdtu)
-            output += strdum
-            strdum = "- YDTU..: {0:8.3f}\n".format(self.ydtu)
-            output += strdum
-            strdum = "- XDTU_0: {0:8.3f}\n".format(self.xdtu_0)
-            output += strdum
-            strdum = "- YDTU_0: {0:8.3f}\n".format(self.ydtu_0)
-            output += strdum
-        else:
-            output += "- XDTU..:  None\n"
-            output += "- YDTU..:  None\n"
-            output += "- XDTU_0:  None\n"
-            output += "- YDTU_0:  None\n"
+        output = "<CsuConfiguration instance>\n"
         for i in range(EMIR_NBARS):
             ibar = i + 1
             strdum = "- [BAR{0:2d}] left, right, center, width: ".format(ibar)
@@ -94,12 +68,6 @@ class SlitletArrangement:
         image_header = hdulist[extnum].header
         hdulist.close()
 
-        # define DTU variables
-        self.xdtu = image_header['xdtu']
-        self.ydtu = image_header['ydtu']
-        self.xdtu_0 = image_header['xdtu_0']
-        self.ydtu_0 = image_header['ydtu_0']
-
         # declare arrays to store configuration of CSU bars
         self.csu_bar_left = []
         self.csu_bar_right = []
@@ -126,5 +94,5 @@ class SlitletArrangement:
                 self.csu_bar_right[i] - self.csu_bar_left[i]
             )
 
-        # data have been properly set
+        # the attributes have been properly set
         self.defined = True
