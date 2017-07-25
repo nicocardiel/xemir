@@ -92,8 +92,10 @@ def integrity_check(bounddict):
                           "xdtu_0",
                           "ydtu",
                           "ydtu_0",
-                          "z_info1",
-                          "z_info2"]
+                          "zdtu",
+                          "zdtu_0",
+                          "zzz_info1",
+                          "zzz_info2"]
             read_keys = tmp_dict.keys()
             for tmp_key in read_keys:
                 if tmp_key not in valid_keys:
@@ -792,13 +794,49 @@ def save_boundaries_from_params_ds9(params, parmodel,
     ds9_file.close()
 
 
+def bound_params_from_dict(bound_param_dict):
+    """Define `~lmfit.parameter.Parameters` object from dictionary.
+
+    Parameters
+    ----------
+    bound_param_dict : dictionary
+        Dictionary containing the JSON contents of a boundary
+        parameter file.
+
+    Returns
+    -------
+    params : :class:`~lmfit.parameter.Parameters`
+        Parameters object.
+
+    """
+
+    params = Parameters()
+    for mainpar in EXPECTED_PARAMETER_LIST:
+        if mainpar not in bound_param_dict['contents'].keys():
+            raise ValueError('Parameter ' + mainpar + ' not found!')
+        if bound_param_dict['meta-info']['parmodel'] ==  "longslit":
+            dumdict = bound_param_dict['contents'][mainpar]
+            params.add(mainpar, value=dumdict["value"],
+                       vary=dumdict["vary"])
+        else:
+            for subpar in ['a0s', 'a1s', 'a2s']:
+                if subpar not in bound_param_dict['contents'][mainpar].keys():
+                    raise ValueError('Subparameter ' + subpar + ' not found' +
+                                     ' under parameter ' + mainpar)
+                cpar = mainpar + '_' + subpar
+                dumdict = bound_param_dict['contents'][mainpar][subpar]
+                params.add(cpar, value=dumdict["value"],
+                           vary=dumdict["vary"])
+    return params
+
+
 def main(args=None):
     parser = argparse.ArgumentParser(prog='fit_boundaries')
     parser.add_argument("bounddict",
                         help="Input JSON boundary file with fits to "
                              "continuum-lamp exposures",
                         type=argparse.FileType('r'))
-    parser.add_argument("initparam",
+    parser.add_argument("init_bound_param",
                         help="Input JSON with initial boundary parameters",
                         type=argparse.FileType('r'))
     parser.add_argument("--parmodel",
@@ -806,7 +844,7 @@ def main(args=None):
                              "longslit",
                         default="multislit",
                         choices=("multislit", "longslit"))
-    parser.add_argument("--fittedparam",
+    parser.add_argument("--fitted_bound_param",
                         help="Output JSON with fitted boundary parameters",
                         type=argparse.FileType('w'))
     parser.add_argument("--numresolution",
@@ -861,43 +899,25 @@ def main(args=None):
     grism = bounddict['tags']['grism']
     spfilter = bounddict['tags']['filter']
 
-    # read initparam file
-    initparam = json.loads(open(args.initparam.name).read())
+    # read init_bound_param file
+    init_bound_param = json.loads(open(args.init_bound_param.name).read())
     # check that grism and filter match
-    grism_ = initparam['tags']['grism']
-    spfilter_ = initparam['tags']['filter']
+    grism_ = init_bound_param['tags']['grism']
+    spfilter_ = init_bound_param['tags']['filter']
     if grism != grism_:
         raise ValueError("grism mismatch")
     if spfilter != spfilter_:
         raise ValueError("filter mismatch")
-    islitlet_min = initparam['tags']['islitlet_min']
-    islitlet_max = initparam['tags']['islitlet_max']
+    islitlet_min = init_bound_param['tags']['islitlet_min']
+    islitlet_max = init_bound_param['tags']['islitlet_max']
     # check that parameter model is correct
-    parmodel_  = initparam['meta-info']['parmodel']
+    parmodel_  = init_bound_param['meta-info']['parmodel']
     if args.parmodel != parmodel_:
         raise ValueError("Unexpected parmodel: ", parmodel_,
-                         " in file ", args.initparam.name)
+                         " in file ", args.init_bound_param.name)
 
-    params = Parameters()
-    for mainpar in EXPECTED_PARAMETER_LIST:
-        if mainpar not in initparam['contents'].keys():
-            raise ValueError('Parameter ' + mainpar + ' not found in ' +
-                             args.initparam.name)
-        if args.parmodel == "longslit":
-            dumdict = initparam['contents'][mainpar]
-            params.add(mainpar, value=dumdict["value"],
-                       vary=dumdict["vary"])
-        else:
-            for subpar in ['a0s', 'a1s', 'a2s']:
-                if subpar not in initparam['contents'][mainpar].keys():
-                    raise ValueError('Subparameter ' + subpar +
-                                     ' not found in ' +
-                                     args.initparam.name +
-                                     ' under parameter ' + mainpar)
-                cpar = mainpar + '_' + subpar
-                dumdict = initparam['contents'][mainpar][subpar]
-                params.add(cpar, value=dumdict["value"],
-                           vary=dumdict["vary"])
+    # establish initial parameters from init_bound_param dictionary
+    params = bound_params_from_dict(init_bound_param)
 
     print('-' * 79)
     print('* INITIAL PARAMETERS')
@@ -935,24 +955,26 @@ def main(args=None):
                                     uuid, grism, spfilter,
                                     'ds9_fittedpar.reg')
 
-    if args.fittedparam is not None:
-        fittedparam = deepcopy(initparam)
-        fittedparam['meta-info']['creation_date'] = datetime.now().isoformat()
-        fittedparam['meta-info']['description'] \
+    if args.fitted_bound_param is not None:
+        fitted_bound_param = deepcopy(init_bound_param)
+        fitted_bound_param['meta-info']['creation_date'] = \
+            datetime.now().isoformat()
+        fitted_bound_param['meta-info']['description'] \
             = "fitted boundary parameters"
-        fittedparam['meta-info']['function_evaluations'] = result.nfev
-        fittedparam['meta-info']['global_residual'] = global_residual
-        fittedparam['meta-info']['uuid_bounddict'] = bounddict['uuid']
-        fittedparam['meta-info']['uuid_initparam'] = initparam['uuid']
-        fittedparam['uuid'] = str(uuid4())
+        fitted_bound_param['meta-info']['function_evaluations'] = result.nfev
+        fitted_bound_param['meta-info']['global_residual'] = global_residual
+        fitted_bound_param['meta-info']['uuid_bounddict'] = bounddict['uuid']
+        fitted_bound_param['meta-info']['uuid_init_bound_param'] = \
+            init_bound_param['uuid']
+        fitted_bound_param['uuid'] = str(uuid4())
         for mainpar in EXPECTED_PARAMETER_LIST:
-            if mainpar not in initparam['contents'].keys():
+            if mainpar not in init_bound_param['contents'].keys():
                 raise ValueError('Parameter ' + mainpar +
-                                 ' not found in ' + args.initparam.name)
+                                 ' not found in ' + args.init_bound_param.name)
             if args.parmodel == "longslit":
-                fittedparam['contents'][mainpar]['value'] = \
+                fitted_bound_param['contents'][mainpar]['value'] = \
                     result.params[mainpar].value
-                fittedparam['contents'][mainpar]['initial'] = \
+                fitted_bound_param['contents'][mainpar]['initial'] = \
                     params[mainpar].value
                 # compute median csu_bar_slit_center (only in longslit mode)
                 dumlist = []
@@ -961,22 +983,24 @@ def main(args=None):
                     if islitlet_min <= islitlet <= islitlet_max:
                         dumlist.append(csu_bar_slit_center)
                 median_csu_bar_slit_center = np.median(np.array(dumlist))
-                fittedparam['meta-info']['median_csu_bar_slit_center'] = \
-                median_csu_bar_slit_center
+                fitted_bound_param['meta-info']['median_csu_bar_slit_center']\
+                    = median_csu_bar_slit_center
             else:
                 for subpar in ['a0s', 'a1s', 'a2s']:
-                    if subpar not in initparam['contents'][mainpar].keys():
+                    if subpar not in \
+                            init_bound_param['contents'][mainpar].keys():
                         raise ValueError(
                             'Subparameter ' + subpar + ' not found in ' +
-                            args.initparam.name + ' under parameter ' + mainpar
+                            args.init_bound_param.name + ' under parameter ' +
+                            mainpar
                         )
                     cpar = mainpar + '_' + subpar
-                    fittedparam['contents'][mainpar][subpar]['value'] = \
-                        result.params[cpar].value
-                    fittedparam['contents'][mainpar][subpar]['initial'] = \
-                        params[cpar].value
-        with open(args.fittedparam.name, 'w') as fstream:
-            json.dump(fittedparam, fstream, indent=2, sort_keys=True)
+                    fitted_bound_param['contents'][mainpar][subpar]['value']\
+                        = result.params[cpar].value
+                    fitted_bound_param['contents'][mainpar][subpar]['initial']\
+                        = params[cpar].value
+        with open(args.fitted_bound_param.name, 'w') as fstream:
+            json.dump(fitted_bound_param, fstream, indent=2, sort_keys=True)
 
     if args.debugplot % 10 != 0:
         fig = plt.figure()
