@@ -26,7 +26,7 @@ class Slitlet2D(object):
 
     """
 
-    def __init__(self, islitlet, params, parmodel, csu_conf):
+    def __init__(self, islitlet, params, parmodel, csu_conf, ymargin=5):
         self.bb_nc1_orig = 1
         self.bb_nc2_orig = NAXIS1_EMIR
 
@@ -36,7 +36,6 @@ class Slitlet2D(object):
                 'both', params, parmodel,
                 numpts=101, deg=5, debugplot=0
             )
-        ymargin = 5
         xdum = np.linspace(1, NAXIS1_EMIR, num=NAXIS1_EMIR)
         ylower = self.poly_lower_expected(xdum)
         yupper = self.poly_upper_expected(xdum)
@@ -46,6 +45,32 @@ class Slitlet2D(object):
         self.bb_ns2_orig = int(yupper.max() + 0.5) + ymargin
         if self.bb_ns2_orig > NAXIS2_EMIR:
             self.bb_ns2_orig = NAXIS2_EMIR
+
+    def extract_slitlet2d(self, image_2k2k):
+        """Extract slitlet 2d image from image with original EMIR dimensions.
+
+        Parameters
+        ----------
+        image_2k2k : 2d numpy array, float
+            Original image (dimensions NAXIS1 * NAXIS2)
+
+        Returns
+        -------
+        slitlet2d : 2d numpy array, float
+            Image corresponding to the slitlet region defined by its
+            bounding box.
+
+        """
+
+        # extract slitlet region
+        slitlet2d = image_2k2k[(self.bb_ns1_orig - 1):self.bb_ns2_orig,
+                               (self.bb_nc1_orig - 1):self.bb_nc2_orig]
+
+        # transform to float
+        slitlet2d = slitlet2d.astype(np.float)
+
+        # return slitlet image
+        return slitlet2d
 
 
 def main(args=None):
@@ -97,8 +122,7 @@ def main(args=None):
     islitlet_max = fitted_bound_param['tags']['islitlet_max']
     for islitlet in range(islitlet_min, islitlet_max + 1):
         slt = Slitlet2D(islitlet, params, parmodel, csu_conf)
-        slitlet2d = image2d[(slt.bb_ns1_orig - 1):slt.bb_ns2_orig,
-                            (slt.bb_nc1_orig - 1):slt.bb_nc2_orig]
+        slitlet2d = slt.extract_slitlet2d(image2d)
         ax = ximshow(slitlet2d, title="Slitlet#" + str(islitlet), show=False)
         xdum = np.linspace(1, NAXIS1_EMIR, num=NAXIS1_EMIR)
         ylower = slt.poly_lower_expected(xdum) - slt.bb_ns1_orig + 1
