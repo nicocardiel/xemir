@@ -7,9 +7,12 @@ import json
 import numpy as np
 import sys
 
+from matplotlib.patches import Rectangle
 from numina.array.display.ximshow import ximshow
 from numina.array.display.ximshow import ximshow_file
 from numina.array.display.pause_debugplot import pause_debugplot
+from scipy import ndimage
+from skimage import restoration
 
 from csu_configuration import CsuConfiguration
 from dtu_configuration import DtuConfiguration
@@ -17,16 +20,24 @@ from emir_definitions import NAXIS1_EMIR
 from emir_definitions import NAXIS2_EMIR
 from fit_boundaries import bound_params_from_dict
 from fit_boundaries import expected_distorted_boundaries
-from spec_2d_image import Spec2DImage
+from rescale_array_to_z1z2 import rescale_array_to_z1z2
+from rescale_array_to_z1z2 import rescale_array_from_z1z2
+from ccd_line import SpectrumTrail
+from ccd_line import ArcLine
 
 from numina.array.display.pause_debugplot import DEBUGPLOT_CODES
+
 
 class Slitlet2D(object):
     """Slitlet2D class definition.
 
     """
 
-    def __init__(self, islitlet, params, parmodel, csu_conf, ymargin=5):
+    def __init__(self, islitlet, params, parmodel, csu_conf, ymargin=10,
+                 debugplot=0):
+
+        self.islitlet = islitlet
+
         self.bb_nc1_orig = 1
         self.bb_nc2_orig = NAXIS1_EMIR
 
@@ -45,6 +56,8 @@ class Slitlet2D(object):
         self.bb_ns2_orig = int(yupper.max() + 0.5) + ymargin
         if self.bb_ns2_orig > NAXIS2_EMIR:
             self.bb_ns2_orig = NAXIS2_EMIR
+
+        self.debugplot = debugplot
 
     def extract_slitlet2d(self, image_2k2k):
         """Extract slitlet 2d image from image with original EMIR dimensions.
@@ -71,6 +84,228 @@ class Slitlet2D(object):
 
         # return slitlet image
         return slitlet2d
+
+    def locate_unknown_arc_lines(self, slitlet2d,
+                                 times_sigma_threshold=4,
+                                 minimum_threshold=None,
+                                 delta_x_max=30,
+                                 delta_y_min=37,
+                                 deg_middle_spectrail=2):
+        # smooth denoising of slitlet2d
+        slitlet2d_rs, coef_rs = rescale_array_to_z1z2(slitlet2d, z1z2=(-1, 1))
+        slitlet2d_dn = restoration.denoise_nl_means(slitlet2d_rs,
+                                                    patch_size=3,
+                                                    patch_distance=2)
+        slitlet2d_dn = rescale_array_from_z1z2(slitlet2d_dn, coef_rs)
+
+        # compute basic statistics
+        q25, q50, q75 = np.percentile(slitlet2d_dn, q=[25.0, 50.0, 75.0])
+        sigmag = 0.7413 * (q75 - q25)  # robust standard deviation
+        if abs(self.debugplot) >= 10:
+            q16, q84 = np.percentile(slitlet2d_dn, q=[15.87, 84.13])
+            print('>>> q16...:', q16)
+            print('>>> q25...:', q25)
+            print('>>> q50...:', q50)
+            print('>>> q75...:', q75)
+            print('>>> q84...:', q84)
+            print('>>> sigmaG:', sigmag)
+        if abs(self.debugplot) % 10 != 0:
+            # display initial image with zscale cuts
+            title = "[slit #" + str(self.islitlet) + "]" + \
+                                    " (locate_unknown_arc_lines #1)"
+            ximshow(slitlet2d, title=title,
+                    debugplot=self.debugplot)
+            # display denoised image with zscale cuts
+            title = "[slit #" + str(self.islitlet) + "]" + \
+                    " (locate_unknown_arc_lines #2)"
+            ximshow(slitlet2d_dn, title=title,
+                    debugplot=self.debugplot)
+            # display image with different cuts
+            z1z2 = (q50 + times_sigma_threshold * sigmag,
+                    q50 + 2 * times_sigma_threshold * sigmag)
+            title = "[slit #" + str(self.islitlet) + "]" + \
+                    " (locate_unknown_arc_lines #3)"
+            ximshow(slitlet2d_dn, title=title, z1z2=z1z2,
+                    debugplot=self.debugplot)
+
+        # determine threshold (using the maximum of q50 + t *sigmag or
+        # minimum_threshold)
+        threshold = q50 + times_sigma_threshold * sigmag
+        if minimum_threshold is not None:
+            if minimum_threshold > threshold:
+                threshold = minimum_threshold
+
+        # identify objects in slitlet2d above threshold
+        labels2d_objects, no_objects = ndimage.label(slitlet2d_dn > threshold)
+        if abs(self.debugplot) >= 10:
+            print("Number of objects initially found:", no_objects)
+        if abs(self.debugplot) % 10 != 0:
+            # display all objects identified in the image
+            title = "[slit #" + str(self.islitlet) + "]" + \
+                    " (locate_unknown_arc_lines #4)"
+            z1z2 = (labels2d_objects.min(), labels2d_objects.max())
+            ximshow(labels2d_objects, title=title,
+                    cbar_label="Object number",
+                    z1z2=z1z2, cmap="nipy_spectral",
+                    debugplot=self.debugplot)
+
+        # select tentative arc lines by imposing the criteria based
+        # on the dimensions of the detected objects
+        slices_possible_arc_lines = ndimage.find_objects(labels2d_objects)
+        slices_ok = np.repeat([False], no_objects)  # flag
+        for i in range(no_objects):
+            if abs(self.debugplot) >= 10:
+                print('slice:', i, slices_possible_arc_lines[i])
+            slice_x = slices_possible_arc_lines[i][1]
+            slice_y = slices_possible_arc_lines[i][0]
+            delta_x = slice_x.stop - slice_x.start + 1
+            delta_y = slice_y.stop - slice_y.start + 1
+            if delta_x <= delta_x_max and delta_y >= delta_y_min:
+                slices_ok[i] = True
+
+        # generate list with ID of tentative arc lines
+        list_slices_ok = []
+        for i in range(no_objects):
+            if slices_ok[i]:
+                list_slices_ok.append(i+1)
+
+        number_tentative_arc_lines = len(list_slices_ok)
+
+        if abs(self.debugplot) >= 10:
+            print("\nNumber of tentative arc lines finally identified is:",
+                  number_tentative_arc_lines)
+            print("Slice ID of lines passing the selection:\n",
+                  list_slices_ok)
+
+        if number_tentative_arc_lines == 0:
+            raise ValueError("Number of tentative arc lines identified is 0")
+
+        # generate mask with all the tentative arc-line points passing
+        # the selection
+        mask_tentative_arc_lines = np.zeros_like(slitlet2d_dn)
+        for k in list_slices_ok:
+            mask_tentative_arc_lines[labels2d_objects == k] = 1
+
+        # select all data points passing the selection
+        xy_tmp = np.where(mask_tentative_arc_lines == 1)
+        x_tmp = xy_tmp[1] + self.bb_nc1_orig
+        y_tmp = xy_tmp[0] + self.bb_ns1_orig
+        w_tmp = slitlet2d_dn[xy_tmp]
+
+        # display tentative arc lines
+        if abs(self.debugplot) % 10 != 0:
+            # display all objects identified in the image
+            title = "[slit #" + str(self.islitlet) + "]" + \
+                    " (locate_unknown_arc_lines #5)"
+            z1z2 = (labels2d_objects.min(),
+                    labels2d_objects.max())
+            ax = ximshow(labels2d_objects, show=False, title=title,
+                         cbar_label="Object number",
+                         z1z2=z1z2, cmap="nipy_spectral",
+                         debugplot=self.debugplot)
+            # tentative arc lines
+            for i in range(no_objects):
+                if slices_ok[i]:
+                    slice_x = slices_possible_arc_lines[i][1]
+                    slice_y = slices_possible_arc_lines[i][0]
+                    xini_slice = slice_x.start + self.bb_nc1_orig - 1
+                    yini_slice = slice_y.start  # + self.bb_ns1_orig
+                    xwidth_slice = slice_x.stop - slice_x.start + 1
+                    ywidth_slice = slice_y.stop - slice_y.start + 1
+                    rect = Rectangle((xini_slice, yini_slice),
+                                     xwidth_slice, ywidth_slice,
+                                     edgecolor='w', facecolor='none')
+                    ax.add_patch(rect)
+            # show plot
+            pause_debugplot(self.debugplot, pltshow=True)
+
+        # update list with ID of final arc lines
+        list_slices_ok = []
+        for i in range(no_objects):
+            if slices_ok[i]:
+                list_slices_ok.append(i+1)
+
+        number_final_arc_lines = len(list_slices_ok)
+
+        if self.debugplot >= 10:
+            print(
+                "\nNumber of final arc lines finally identified is:",
+                number_final_arc_lines)
+            print("Slice ID of lines passing the selection:\n",
+                  list_slices_ok)
+
+        if number_final_arc_lines == 0:
+            raise ValueError(
+                "Number of final arc lines identified is 0")
+
+        # generate mask with all the final arc-line points passing
+        # the selection
+        mask_final_arc_lines = np.zeros_like(slitlet2d_dn)
+        for k in list_slices_ok:
+            mask_final_arc_lines[labels2d_objects == k] = 1
+
+        # adjust individual arc lines passing the selection
+        self.list_arc_lines = []  # list of ArcLines
+        for k in range(number_final_arc_lines):  # fit each arc line
+            # select points to be fitted for a particular arc line
+            xy_tmp = np.where(labels2d_objects == list_slices_ok[k])
+            x_tmp = xy_tmp[1] + self.bb_nc1_orig
+            y_tmp = xy_tmp[0] + self.bb_ns1_orig
+            w_tmp = slitlet2d_dn[xy_tmp]
+            # declare new ArcLine instance
+            arc_line = ArcLine()
+            # define new ArcLine using a weighted fit
+            # (note that it must be X vs Y)
+            arc_line.fit(x=x_tmp, y=y_tmp, deg=1, w=w_tmp, y_vs_x=False)
+            # update list with identified ArcLines
+            self.list_arc_lines.append(arc_line)
+
+        number_arc_lines = len(self.list_arc_lines)
+        if number_arc_lines < deg_middle_spectrail - 1:
+            raise ValueError("Insufficient number of arc lines found!")
+
+        if self.debugplot >= 10:
+            # print list of arc lines
+            print('\nlist_arc_lines:')
+            for k in range(number_arc_lines):
+                print(k, '->', self.list_arc_lines[k], '\n')
+
+        # display results
+        if self.debugplot % 10 != 0:
+            import matplotlib
+            matplotlib.use('Qt4Agg')
+            import matplotlib.pyplot as plt
+            # compute image with only the arc lines passing the selection
+            labels2d_arc_lines = labels2d_objects * mask_final_arc_lines
+            # display background image with filtered arc lines
+            title = "[slit #" + str(self.islitlet) + "]" + \
+                    " (locate_unknown_arc_lines #7)"
+            z1z2 = (labels2d_arc_lines.min(),
+                    labels2d_arc_lines.max())
+            ax = ximshow(labels2d_arc_lines, show=False,
+                         cbar_label="Object number",
+                         title=title, z1z2=z1z2, cmap="nipy_spectral",
+                         debugplot=self.debugplot)
+            # plot weighted fit for each arc line (note that the fit is
+            # X vs Y)
+            for k in range(number_arc_lines):
+                xpol, ypol = self.list_arc_lines[k].linspace_pix()
+                ax.plot(xpol, ypol, 'g--')
+            # display lower and upper points of each arc line
+            x_tmp = [arc_line.xlower_line for arc_line in self.list_arc_lines]
+            y_tmp = [arc_line.ylower_line for arc_line in self.list_arc_lines]
+            ax.plot(x_tmp, y_tmp, 'ro')
+            x_tmp = [arc_line.xupper_line for arc_line in self.list_arc_lines]
+            y_tmp = [arc_line.yupper_line for arc_line in self.list_arc_lines]
+            ax.plot(x_tmp, y_tmp, 'go')
+            '''
+            # display global fit
+            xpol, ypol = self.list_spectrum_trails[0].linspace_pix(
+                start=self.bb_nc1_orig, stop=self.bb_nc2_orig)
+            ax.plot(xpol, ypol, 'r--')
+            '''
+            # show plot
+            pause_debugplot(self.debugplot, pltshow=True)
 
 
 def main(args=None):
@@ -121,8 +356,12 @@ def main(args=None):
     islitlet_min = fitted_bound_param['tags']['islitlet_min']
     islitlet_max = fitted_bound_param['tags']['islitlet_max']
     for islitlet in range(islitlet_min, islitlet_max + 1):
-        slt = Slitlet2D(islitlet, params, parmodel, csu_conf)
+        slt = Slitlet2D(islitlet=islitlet,
+                        params=params, parmodel=parmodel,
+                        csu_conf=csu_conf,
+                        debugplot=args.debugplot)
         slitlet2d = slt.extract_slitlet2d(image2d)
+        #
         ax = ximshow(slitlet2d, title="Slitlet#" + str(islitlet), show=False)
         xdum = np.linspace(1, NAXIS1_EMIR, num=NAXIS1_EMIR)
         ylower = slt.poly_lower_expected(xdum) - slt.bb_ns1_orig + 1
@@ -130,6 +369,8 @@ def main(args=None):
         yupper = slt.poly_upper_expected(xdum) - slt.bb_ns1_orig + 1
         ax.plot(xdum, yupper, 'b-')
         pause_debugplot(debugplot=args.debugplot, pltshow=True)
+        #
+        slt.locate_unknown_arc_lines(slitlet2d)
 
     if False:
         ax=ximshow_file(args.fitsfile.name, show=False)
