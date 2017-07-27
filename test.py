@@ -41,10 +41,10 @@ class Slitlet2D(object):
         self.bb_nc1_orig = 1
         self.bb_nc2_orig = NAXIS1_EMIR
 
-        self.poly_lower_expected, self.poly_upper_expected = \
-            expected_distorted_boundaries(
+        self.poly_lower_expected, self.poly_middle_expected, \
+        self.poly_upper_expected = expected_distorted_boundaries(
                 islitlet, csu_conf.csu_bar_slit_center[islitlet - 1],
-                'both', params, parmodel,
+                'three', params, parmodel,
                 numpts=101, deg=5, debugplot=0
             )
         xdum = np.linspace(1, NAXIS1_EMIR, num=NAXIS1_EMIR)
@@ -80,9 +80,15 @@ class Slitlet2D(object):
                  str(self.bb_nc2_orig) + "\n" + \
             "- bb_ns1_orig.................: " + \
                  str(self.bb_ns1_orig) + "\n" + \
-            "- bb_ns2_orig.................: " \
-                 + str(self.bb_ns2_orig) + "\n" + \
-            "- num. of associated arc lines: " + \
+            "- bb_ns2_orig.................: " + \
+                 str(self.bb_ns2_orig) + "\n" + \
+            "- poly_middle.................:\n" + \
+                 str(self.poly_middle_expected) + "\n" + \
+            "- poly_lower..................:\n" + \
+                 str(self.poly_lower_expected) + "\n" + \
+                 "- poly_upper..................:\n" + \
+                 str(self.poly_upper_expected) + "\n" + \
+                 "- num. of associated arc lines: " + \
                str(number_arc_lines) + "\n" + \
             "- debugplot...................: " + \
                  str(self.debugplot)
@@ -201,7 +207,8 @@ class Slitlet2D(object):
                     debugplot=self.debugplot)
 
         # select arc lines by imposing the criteria based on the
-        # dimensions of the detected objects
+        # dimensions of the detected objects and the intersection with
+        # the middle spectrum trail
         slices_possible_arc_lines = ndimage.find_objects(labels2d_objects)
         slices_ok = np.repeat([False], no_objects)  # flag
         for i in range(no_objects):
@@ -216,8 +223,20 @@ class Slitlet2D(object):
             # already the upper limit +1 (in np.array coordinates)
             delta_x = slice_x.stop - slice_x.start
             delta_y = slice_y.stop - slice_y.start
+            # dimensions criterion
             if delta_x <= delta_x_max and delta_y >= delta_y_min:
-                slices_ok[i] = True
+                # intersection with middle spectrum trail criterion;
+                # note that slice_x and slice_y are given in np.array
+                # coordinates and are transformed into image coordinates;
+                # in addition, -0.5 shift the origin to the lower left
+                # corner of the pixel
+                xini_slice = slice_x.start + self.bb_nc1_orig - 0.5
+                xmiddle_slice = xini_slice + delta_x / 2
+                ymiddle_slice = self.poly_middle_expected(xmiddle_slice)
+                yini_slice = slice_y.start + self.bb_ns1_orig - 0.5
+                yend_slice = yini_slice + delta_y
+                if yini_slice <= ymiddle_slice <= yend_slice:
+                    slices_ok[i] = True
 
         # generate list with ID of arc lines (note that first object is
         # number 0 and not 1)
@@ -375,23 +394,30 @@ def main(args=None):
     islitlet_min = fitted_bound_param['tags']['islitlet_min']
     islitlet_max = fitted_bound_param['tags']['islitlet_max']
     for islitlet in range(islitlet_min, islitlet_max + 1):
+        # define Slitlet2D object
         slt = Slitlet2D(islitlet=islitlet,
                         params=params, parmodel=parmodel,
                         csu_conf=csu_conf,
                         debugplot=args.debugplot)
+        print(slt)
+        pause_debugplot(args.debugplot)
+        # extract 2D image corresponding to the selected slitlet
         slitlet2d = slt.extract_slitlet2d(image2d)
-        #
+        # display slitlet2d with boundaries and middle spectrum trail
         ax = ximshow(slitlet2d, title="Slitlet#" + str(islitlet),
                      first_pixel=(slt.bb_nc1_orig, slt.bb_ns1_orig),
                      show=False)
         xdum = np.linspace(1, NAXIS1_EMIR, num=NAXIS1_EMIR)
         ylower = slt.poly_lower_expected(xdum)
         ax.plot(xdum, ylower, 'b-')
+        ymiddle = slt.poly_middle_expected(xdum)
+        ax.plot(xdum, ymiddle, 'b--')
         yupper = slt.poly_upper_expected(xdum)
         ax.plot(xdum, yupper, 'b-')
         pause_debugplot(debugplot=args.debugplot, pltshow=True)
-        #
-        slt.locate_unknown_arc_lines(slitlet2d)
+        # locate unknown arc lines
+        slt.locate_unknown_arc_lines(slitlet2d,
+                                     delta_x_max=30, delta_y_min=30)
         print(slt)
         pause_debugplot(args.debugplot)
 
