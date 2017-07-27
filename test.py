@@ -38,8 +38,8 @@ class Slitlet2D(object):
 
         self.islitlet = islitlet
 
-        self.bb_nc1_orig = 1200
-        self.bb_nc2_orig = NAXIS1_EMIR - 100
+        self.bb_nc1_orig = 1
+        self.bb_nc2_orig = NAXIS1_EMIR
 
         self.poly_lower_expected, self.poly_upper_expected = \
             expected_distorted_boundaries(
@@ -206,7 +206,8 @@ class Slitlet2D(object):
         slices_ok = np.repeat([False], no_objects)  # flag
         for i in range(no_objects):
             if abs(self.debugplot) >= 10:
-                print('object [in np.array coordinates]:', i + 1,
+                print('object', i + 1,
+                      '[in np.array coordinates]:',
                       slices_possible_arc_lines[i])
             slice_x = slices_possible_arc_lines[i][1]
             slice_y = slices_possible_arc_lines[i][0]
@@ -228,10 +229,11 @@ class Slitlet2D(object):
         if abs(self.debugplot) >= 10:
             print("\nNumber of arc lines finally identified is:",
                   number_arc_lines)
-            print("Slice ID of lines passing the selection:\n",
-                  list_slices_ok)
+            if number_arc_lines > 0:
+                print("Slice ID of lines passing the selection:\n",
+                      list_slices_ok)
         if number_arc_lines == 0:
-            raise ValueError("Number of arc lines identified is 0")
+            return
 
         # display arc lines
         if abs(self.debugplot) % 10 != 0:
@@ -372,7 +374,7 @@ def main(args=None):
 
     islitlet_min = fitted_bound_param['tags']['islitlet_min']
     islitlet_max = fitted_bound_param['tags']['islitlet_max']
-    for islitlet in range(islitlet_min, islitlet_max + 1, 2):
+    for islitlet in range(islitlet_min, islitlet_max + 1):
         slt = Slitlet2D(islitlet=islitlet,
                         params=params, parmodel=parmodel,
                         csu_conf=csu_conf,
@@ -391,6 +393,7 @@ def main(args=None):
         #
         slt.locate_unknown_arc_lines(slitlet2d)
         print(slt)
+        pause_debugplot(args.debugplot)
 
     if False:
         ax=ximshow_file(args.fitsfile.name, show=False)
