@@ -233,7 +233,8 @@ def expected_distorted_boundaries(islitlet, csu_bar_slit_center,
         CSU bar slit center, in mm.
     border : str
         Boundary border to be computed. Allowed values are 'lower',
-        'upper' or 'both'.
+        'middle', 'upper', 'both' (='lower' and 'upper') or 'all'
+        (='lower', 'middle' and 'upper').
     params : :class:`~lmfit.parameter.Parameters`
         Parameters to be employed in the prediction of the distorted
         boundaries.
@@ -251,8 +252,9 @@ def expected_distorted_boundaries(islitlet, csu_bar_slit_center,
 
     Returns
     -------
-    poly_lower and/or poly_upper : numpy.polynomial.Polynomial()
-        Lower and/or upper polynomial fits to expected boundaries.
+    poly_lower and/or poly_middle and/or poly_upper : numpy.polynomial.Polynomial()
+        Lower and/or middle and/or upper polynomial fit to expected
+        boundaries.
 
     """
 
@@ -344,7 +346,7 @@ def expected_distorted_boundaries(islitlet, csu_bar_slit_center,
 
     theta0 = theta0_origin/1E3 + theta0_slope/1E4 * islitlet
 
-    if border not in ['lower', 'upper', 'both']:
+    if border not in ['lower', 'middle', 'upper', 'both', 'three']:
         raise ValueError('Unexpected border:', border)
 
     xp = np.linspace(1, NAXIS1_EMIR, numpts)
@@ -353,11 +355,12 @@ def expected_distorted_boundaries(islitlet, csu_bar_slit_center,
     # undistorted (constant) y-coordinate of the lower and upper boundaries
     ybottom = y_baseline * 100 + (islitlet - 1) * slit_dist
     ytop = ybottom + (slit_height * 10)
+    ymiddle = ybottom + (0.5 * slit_height * 10)
 
     # avoid PyCharm warning (variables might by referenced before assignment)
-    poly_lower = poly_upper = None  # avoid PyCharm warning
+    poly_lower = poly_upper = poly_middle = None  # avoid PyCharm warning
 
-    if border in ['lower', 'both']:
+    if border in ['lower', 'both', 'three']:
         # undistorted boundary
         yp_bottom = np.ones(numpts) * ybottom
         # distorted boundary
@@ -365,7 +368,7 @@ def expected_distorted_boundaries(islitlet, csu_bar_slit_center,
                             c2=c2, c4=c4, theta0=theta0, ff=ff)
         poly_lower, dum = polfit_residuals(xdist, ydist, deg,
                                            debugplot=debugplot)
-    if border in ['upper', 'both']:
+    if border in ['upper', 'both', 'three']:
         # undistorted boundary
         yp_top = np.ones(numpts) * ytop
         # distorted boundary
@@ -374,12 +377,27 @@ def expected_distorted_boundaries(islitlet, csu_bar_slit_center,
         poly_upper, dum = polfit_residuals(xdist, ydist, deg,
                                            debugplot=debugplot)
 
+    if border in ['middle', 'three']:
+        # undistorted boundary
+        yp_middle = np.ones(numpts) * ymiddle
+        # distorted boundary
+        xdist, ydist = exvp(xp, yp_middle, x0=x0, y0=y0,
+                            c2=c2, c4=c4, theta0=theta0, ff=ff)
+        poly_middle, dum = polfit_residuals(xdist, ydist, deg,
+                                            debugplot=debugplot)
+
     if border == 'lower':
         return poly_lower
+    elif border == 'middle':
+        return poly_middle
     elif border == 'upper':
         return poly_upper
-    else:
+    elif border == 'both':
         return poly_lower, poly_upper
+    elif border == 'three':
+        return poly_lower, poly_middle, poly_upper
+    else:
+        raise ValueError('Unexpected border:', border)
 
 
 def fun_residuals(params, parmodel, bounddict, numresolution,
