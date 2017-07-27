@@ -38,7 +38,7 @@ class Slitlet2D(object):
 
         self.islitlet = islitlet
 
-        self.bb_nc1_orig = 100
+        self.bb_nc1_orig = 1200
         self.bb_nc2_orig = NAXIS1_EMIR - 100
 
         self.poly_lower_expected, self.poly_upper_expected = \
@@ -161,11 +161,13 @@ class Slitlet2D(object):
             title = "[slit #" + str(self.islitlet) + "]" + \
                                     " (locate_unknown_arc_lines #1)"
             ximshow(slitlet2d, title=title,
+                    first_pixel=(self.bb_nc1_orig, self.bb_ns1_orig),
                     debugplot=self.debugplot)
             # display denoised image with zscale cuts
             title = "[slit #" + str(self.islitlet) + "]" + \
                     " (locate_unknown_arc_lines #2)"
             ximshow(slitlet2d_dn, title=title,
+                    first_pixel=(self.bb_nc1_orig, self.bb_ns1_orig),
                     debugplot=self.debugplot)
             # display image with different cuts
             z1z2 = (q50 + times_sigma_threshold * sigmag,
@@ -173,6 +175,7 @@ class Slitlet2D(object):
             title = "[slit #" + str(self.islitlet) + "]" + \
                     " (locate_unknown_arc_lines #3)"
             ximshow(slitlet2d_dn, title=title, z1z2=z1z2,
+                    first_pixel=(self.bb_nc1_orig, self.bb_ns1_orig),
                     debugplot=self.debugplot)
 
         # determine threshold (using the maximum of q50 + t *sigmag or
@@ -192,6 +195,7 @@ class Slitlet2D(object):
                     " (locate_unknown_arc_lines #4)"
             z1z2 = (labels2d_objects.min(), labels2d_objects.max())
             ximshow(labels2d_objects, title=title,
+                    first_pixel=(self.bb_nc1_orig, self.bb_ns1_orig),
                     cbar_label="Object number",
                     z1z2=z1z2, cmap="nipy_spectral",
                     debugplot=self.debugplot)
@@ -202,7 +206,8 @@ class Slitlet2D(object):
         slices_ok = np.repeat([False], no_objects)  # flag
         for i in range(no_objects):
             if abs(self.debugplot) >= 10:
-                print('object:', i + 1, slices_possible_arc_lines[i])
+                print('object [in np.array coordinates]:', i + 1,
+                      slices_possible_arc_lines[i])
             slice_x = slices_possible_arc_lines[i][1]
             slice_y = slices_possible_arc_lines[i][0]
             # note that the width computation doesn't require to
@@ -236,6 +241,7 @@ class Slitlet2D(object):
             z1z2 = (labels2d_objects.min(),
                     labels2d_objects.max())
             ax = ximshow(labels2d_objects, show=False, title=title,
+                         first_pixel=(self.bb_nc1_orig, self.bb_ns1_orig),
                          cbar_label="Object number",
                          z1z2=z1z2, cmap="nipy_spectral",
                          debugplot=self.debugplot)
@@ -245,11 +251,11 @@ class Slitlet2D(object):
                     slice_x = slices_possible_arc_lines[i][1]
                     slice_y = slices_possible_arc_lines[i][0]
                     # note that slice_x and slice_y are given in np.array
-                    # coordinates; for that reason +1 transform them into
-                    # image coordinates; in addition, -0.5 shift the origin
-                    # to the lower left corner of the pixel
-                    xini_slice = slice_x.start + 1 - 0.5
-                    yini_slice = slice_y.start + 1 - 0.5
+                    # coordinates and are transformed into image coordinates;
+                    # in addition, -0.5 shift the origin to the lower left
+                    # corner of the pixel
+                    xini_slice = slice_x.start + self.bb_nc1_orig - 0.5
+                    yini_slice = slice_y.start + self.bb_ns1_orig - 0.5
                     # note that the width computation doesn't require to
                     # add +1 since slice_x.stop (and slice_y.stop) is
                     # already the upper limit +1 (in np.array coordinates)
@@ -272,8 +278,8 @@ class Slitlet2D(object):
         for k in range(number_arc_lines):  # fit each arc line
             # select points to be fitted for a particular arc line
             xy_tmp = np.where(labels2d_objects == list_slices_ok[k])
-            x_tmp = xy_tmp[1] + 1  # np.array coordinates --> image coordinates
-            y_tmp = xy_tmp[0] + 1  # np.array coordinates --> image coordinates
+            x_tmp = xy_tmp[1] + self.bb_nc1_orig  # use image coordinates
+            y_tmp = xy_tmp[0] + self.bb_ns1_orig  # use image coordinates
             w_tmp = slitlet2d_dn[xy_tmp]
             # declare new ArcLine instance
             arc_line = ArcLine()
@@ -299,6 +305,7 @@ class Slitlet2D(object):
             z1z2 = (labels2d_arc_lines.min(),
                     labels2d_arc_lines.max())
             ax = ximshow(labels2d_arc_lines, show=False,
+                         first_pixel=(self.bb_nc1_orig, self.bb_ns1_orig),
                          cbar_label="Object number",
                          title=title, z1z2=z1z2, cmap="nipy_spectral",
                          debugplot=self.debugplot)
@@ -372,11 +379,13 @@ def main(args=None):
                         debugplot=args.debugplot)
         slitlet2d = slt.extract_slitlet2d(image2d)
         #
-        ax = ximshow(slitlet2d, title="Slitlet#" + str(islitlet), show=False)
+        ax = ximshow(slitlet2d, title="Slitlet#" + str(islitlet),
+                     first_pixel=(slt.bb_nc1_orig, slt.bb_ns1_orig),
+                     show=False)
         xdum = np.linspace(1, NAXIS1_EMIR, num=NAXIS1_EMIR)
-        ylower = slt.poly_lower_expected(xdum) - slt.bb_ns1_orig + 1
+        ylower = slt.poly_lower_expected(xdum)
         ax.plot(xdum, ylower, 'b-')
-        yupper = slt.poly_upper_expected(xdum) - slt.bb_ns1_orig + 1
+        yupper = slt.poly_upper_expected(xdum)
         ax.plot(xdum, yupper, 'b-')
         pause_debugplot(debugplot=args.debugplot, pltshow=True)
         #
