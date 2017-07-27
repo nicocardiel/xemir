@@ -222,11 +222,146 @@ def exvp(x, y, x0, y0, c2, c4, theta0, ff):
         return np.array(xdist), np.array(ydist)
 
 
+def return_params(islitlet, csu_bar_slit_center, params, parmodel):
+    """Return individual model parameters from object of type Parameters.
+
+    Parameters
+    ----------
+    islitlet : int
+        Number of slitlet.
+    csu_bar_slit_center : float
+        CSU bar slit center, in mm.
+    params : :class:`~lmfit.parameter.Parameters`
+        Parameters to be employed in the prediction of the distorted
+        boundaries.
+    parmodel : str
+        Model to be assumed. Allowed values are 'longslit' and
+        'multislit'.
+
+
+    Returns
+    -------
+    c2 : float
+        Coefficient corresponding to the term r**2 in distortion
+        equation.
+    c4 : float
+        Coefficient corresponding to the term r**4 in distortion
+        equation.
+    ff : float
+        Scaling factor to be applied to the Y axis.
+    slit_gap : float
+        Slit gap.
+    slit_height : float
+        Slit height.
+    theta0 : float
+        Additional rotation angle (radians).
+    x0 : float
+        X coordinate of reference pixel.
+    y0 : float
+        Y coordinate of reference pixel.
+    y_baseline : float
+        Y coordinate employed as baseline.
+
+    """
+
+    if parmodel == "longslit":
+        # set each variable in EXPECTED_PARAMETER_LIST to the value
+        # transferred through 'params'
+        c2 = params['c2'].value
+        c4 = params['c4'].value
+        ff = params['ff'].value
+        slit_gap = params['slit_gap'].value
+        slit_height = params['slit_height'].value
+        theta0_origin = params['theta0_origin'].value
+        theta0_slope = params['theta0_slope'].value
+        x0 = params['x0'].value
+        y0 = params['y0'].value
+        y_baseline = params['y_baseline'].value
+    else:
+        # set each variable in EXPECTED_PARAMETER_LIST_EXTENDED to the value
+        # transferred through 'params'
+        c2_a0s = params['c2_a0s'].value
+        c2_a1s = params['c2_a1s'].value / 1E3
+        c2_a2s = params['c2_a2s'].value / 1E6
+        c2 = c2_a0s + \
+             c2_a1s * csu_bar_slit_center + \
+             c2_a2s * csu_bar_slit_center ** 2
+        # ---
+        c4_a0s = params['c4_a0s'].value
+        c4_a1s = params['c4_a1s'].value / 1E3
+        c4_a2s = params['c4_a2s'].value / 1E6
+        c4 = c4_a0s + \
+             c4_a1s * csu_bar_slit_center + \
+             c4_a2s * csu_bar_slit_center ** 2
+        # ---
+        ff_a0s = params['ff_a0s'].value
+        ff_a1s = params['ff_a1s'].value / 1E3
+        ff_a2s = params['ff_a2s'].value / 1E6
+        ff = ff_a0s + \
+             ff_a1s * csu_bar_slit_center + \
+             ff_a2s * csu_bar_slit_center ** 2
+        # ---
+        slit_gap_a0s = params['slit_gap_a0s'].value
+        slit_gap_a1s = params['slit_gap_a1s'].value / 1E3
+        slit_gap_a2s = params['slit_gap_a2s'].value / 1E6
+        slit_gap = slit_gap_a0s + \
+                   slit_gap_a1s * csu_bar_slit_center + \
+                   slit_gap_a2s * csu_bar_slit_center ** 2
+        # ---
+        slit_height_a0s = params['slit_height_a0s'].value
+        slit_height_a1s = params['slit_height_a1s'].value / 1E3
+        slit_height_a2s = params['slit_height_a2s'].value / 1E6
+        slit_height = slit_height_a0s + \
+                      slit_height_a1s * csu_bar_slit_center + \
+                      slit_height_a2s * csu_bar_slit_center ** 2
+        # ---
+        theta0_origin_a0s = params['theta0_origin_a0s'].value
+        theta0_origin_a1s = params['theta0_origin_a1s'].value / 1E3
+        theta0_origin_a2s = params['theta0_origin_a2s'].value / 1E6
+        theta0_origin = theta0_origin_a0s + \
+                        theta0_origin_a1s * csu_bar_slit_center + \
+                        theta0_origin_a2s * csu_bar_slit_center ** 2
+        # ---
+        theta0_slope_a0s = params['theta0_slope_a0s'].value
+        theta0_slope_a1s = params['theta0_slope_a1s'].value / 1E3
+        theta0_slope_a2s = params['theta0_slope_a2s'].value / 1E6
+        theta0_slope = theta0_slope_a0s + \
+                       theta0_slope_a1s * csu_bar_slit_center + \
+                       theta0_slope_a2s * csu_bar_slit_center ** 2
+        # ---
+        x0_a0s = params['x0_a0s'].value
+        x0_a1s = params['x0_a1s'].value / 1E3
+        x0_a2s = params['x0_a2s'].value / 1E6
+        x0 = x0_a0s + \
+             x0_a1s * csu_bar_slit_center + \
+             x0_a2s * csu_bar_slit_center ** 2
+        # ---
+        y0_a0s = params['y0_a0s'].value
+        y0_a1s = params['y0_a1s'].value / 1E3
+        y0_a2s = params['y0_a2s'].value / 1E6
+        y0 = y0_a0s + \
+             y0_a1s * csu_bar_slit_center + \
+             y0_a2s * csu_bar_slit_center ** 2
+        # ---
+        y_baseline_a0s = params['y_baseline_a0s'].value
+        y_baseline_a1s = params['y_baseline_a1s'].value / 1E3
+        y_baseline_a2s = params['y_baseline_a2s'].value / 1E6
+        y_baseline = y_baseline_a0s + \
+                     y_baseline_a1s * csu_bar_slit_center + \
+                     y_baseline_a2s * csu_bar_slit_center ** 2
+
+    theta0 = theta0_origin / 1E3 + theta0_slope / 1E4 * islitlet
+
+    return c2, c4, ff, slit_gap, slit_height, theta0, x0, y0, y_baseline
+
+
 def expected_distorted_boundaries(islitlet, csu_bar_slit_center,
                                   border, params, parmodel,
                                   numpts, deg, debugplot=0):
     """Return polynomial coefficients of expected distorted boundaries.
 
+    Parameters
+    ----------
     islitlet : int
         Number of slitlet.
     csu_bar_slit_center : float
@@ -258,93 +393,8 @@ def expected_distorted_boundaries(islitlet, csu_bar_slit_center,
 
     """
 
-    if parmodel == "longslit":
-        # set each variable in EXPECTED_PARAMETER_LIST to the value
-        # transferred through 'params'
-        c2 = params['c2'].value
-        c4 = params['c4'].value
-        ff = params['ff'].value
-        slit_gap = params['slit_gap'].value
-        slit_height = params['slit_height'].value
-        theta0_origin = params['theta0_origin'].value
-        theta0_slope = params['theta0_slope'].value
-        x0 = params['x0'].value
-        y0 = params['y0'].value
-        y_baseline = params['y_baseline'].value
-    else:
-        # set each variable in EXPECTED_PARAMETER_LIST_EXTENDED to the value
-        # transferred through 'params'
-        c2_a0s = params['c2_a0s'].value
-        c2_a1s = params['c2_a1s'].value / 1E3
-        c2_a2s = params['c2_a2s'].value / 1E6
-        c2 = c2_a0s + \
-             c2_a1s * csu_bar_slit_center + \
-             c2_a2s * csu_bar_slit_center**2
-        # ---
-        c4_a0s = params['c4_a0s'].value
-        c4_a1s = params['c4_a1s'].value / 1E3
-        c4_a2s = params['c4_a2s'].value / 1E6
-        c4 = c4_a0s + \
-             c4_a1s * csu_bar_slit_center + \
-             c4_a2s * csu_bar_slit_center**2
-        # ---
-        ff_a0s = params['ff_a0s'].value
-        ff_a1s = params['ff_a1s'].value / 1E3
-        ff_a2s = params['ff_a2s'].value / 1E6
-        ff = ff_a0s + \
-             ff_a1s * csu_bar_slit_center + \
-             ff_a2s * csu_bar_slit_center**2
-        # ---
-        slit_gap_a0s = params['slit_gap_a0s'].value
-        slit_gap_a1s = params['slit_gap_a1s'].value / 1E3
-        slit_gap_a2s = params['slit_gap_a2s'].value / 1E6
-        slit_gap = slit_gap_a0s + \
-                   slit_gap_a1s * csu_bar_slit_center + \
-                   slit_gap_a2s * csu_bar_slit_center**2
-        # ---
-        slit_height_a0s = params['slit_height_a0s'].value
-        slit_height_a1s = params['slit_height_a1s'].value / 1E3
-        slit_height_a2s = params['slit_height_a2s'].value / 1E6
-        slit_height = slit_height_a0s + \
-                      slit_height_a1s * csu_bar_slit_center + \
-                      slit_height_a2s * csu_bar_slit_center**2
-        # ---
-        theta0_origin_a0s = params['theta0_origin_a0s'].value
-        theta0_origin_a1s = params['theta0_origin_a1s'].value / 1E3
-        theta0_origin_a2s = params['theta0_origin_a2s'].value / 1E6
-        theta0_origin = theta0_origin_a0s + \
-                        theta0_origin_a1s * csu_bar_slit_center + \
-                        theta0_origin_a2s * csu_bar_slit_center**2
-        # ---
-        theta0_slope_a0s = params['theta0_slope_a0s'].value
-        theta0_slope_a1s = params['theta0_slope_a1s'].value / 1E3
-        theta0_slope_a2s = params['theta0_slope_a2s'].value / 1E6
-        theta0_slope = theta0_slope_a0s + \
-                       theta0_slope_a1s * csu_bar_slit_center + \
-                       theta0_slope_a2s * csu_bar_slit_center**2
-        # ---
-        x0_a0s = params['x0_a0s'].value
-        x0_a1s = params['x0_a1s'].value / 1E3
-        x0_a2s = params['x0_a2s'].value / 1E6
-        x0 = x0_a0s + \
-             x0_a1s * csu_bar_slit_center + \
-             x0_a2s * csu_bar_slit_center**2
-        # ---
-        y0_a0s = params['y0_a0s'].value
-        y0_a1s = params['y0_a1s'].value / 1E3
-        y0_a2s = params['y0_a2s'].value / 1E6
-        y0 = y0_a0s + \
-             y0_a1s * csu_bar_slit_center + \
-             y0_a2s * csu_bar_slit_center**2
-        # ---
-        y_baseline_a0s = params['y_baseline_a0s'].value
-        y_baseline_a1s = params['y_baseline_a1s'].value / 1E3
-        y_baseline_a2s = params['y_baseline_a2s'].value / 1E6
-        y_baseline = y_baseline_a0s + \
-                     y_baseline_a1s * csu_bar_slit_center + \
-                     y_baseline_a2s * csu_bar_slit_center**2
-
-    theta0 = theta0_origin/1E3 + theta0_slope/1E4 * islitlet
+    c2, c4, ff, slit_gap, slit_height, theta0, x0, y0, y_baseline = \
+        return_params(islitlet, csu_bar_slit_center, params, parmodel)
 
     if border not in ['lower', 'middle', 'upper', 'both', 'three']:
         raise ValueError('Unexpected border:', border)
