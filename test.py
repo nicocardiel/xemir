@@ -89,8 +89,25 @@ class Slitlet2D(object):
                                  times_sigma_threshold=4,
                                  minimum_threshold=None,
                                  delta_x_max=30,
-                                 delta_y_min=37,
-                                 deg_middle_spectrail=2):
+                                 delta_y_min=37):
+        """Determine the location of known arc lines in slitlet.
+
+        Parameters
+        ----------
+        slitlet2d : 2d numpy array, float
+            Image containing the 2d slitlet image.
+        times_sigma_threshold : float
+            Times (robust) sigma above the median of the image to look
+            for arc lines.
+        minimum_threshold : float or None
+            Minimum threshold to look for arc lines.
+        delta_x_max : float
+            Maximum size of potential arc line in the X direction.
+        delta_y_min : float
+            Minimum size of potential arc line in the Y direction.
+
+        """
+
         # smooth denoising of slitlet2d
         slitlet2d_rs, coef_rs = rescale_array_to_z1z2(slitlet2d, z1z2=(-1, 1))
         slitlet2d_dn = restoration.denoise_nl_means(slitlet2d_rs,
@@ -261,25 +278,20 @@ class Slitlet2D(object):
             self.list_arc_lines.append(arc_line)
 
         number_arc_lines = len(self.list_arc_lines)
-        if number_arc_lines < deg_middle_spectrail - 1:
-            raise ValueError("Insufficient number of arc lines found!")
 
-        if self.debugplot >= 10:
+        if abs(self.debugplot) >= 10:
             # print list of arc lines
             print('\nlist_arc_lines:')
             for k in range(number_arc_lines):
                 print(k, '->', self.list_arc_lines[k], '\n')
 
         # display results
-        if self.debugplot % 10 != 0:
-            import matplotlib
-            matplotlib.use('Qt4Agg')
-            import matplotlib.pyplot as plt
+        if abs(self.debugplot) % 10 != 0:
             # compute image with only the arc lines passing the selection
             labels2d_arc_lines = labels2d_objects * mask_final_arc_lines
             # display background image with filtered arc lines
             title = "[slit #" + str(self.islitlet) + "]" + \
-                    " (locate_unknown_arc_lines #7)"
+                    " (locate_unknown_arc_lines #6)"
             z1z2 = (labels2d_arc_lines.min(),
                     labels2d_arc_lines.max())
             ax = ximshow(labels2d_arc_lines, show=False,
@@ -298,12 +310,6 @@ class Slitlet2D(object):
             x_tmp = [arc_line.xupper_line for arc_line in self.list_arc_lines]
             y_tmp = [arc_line.yupper_line for arc_line in self.list_arc_lines]
             ax.plot(x_tmp, y_tmp, 'go')
-            '''
-            # display global fit
-            xpol, ypol = self.list_spectrum_trails[0].linspace_pix(
-                start=self.bb_nc1_orig, stop=self.bb_nc2_orig)
-            ax.plot(xpol, ypol, 'r--')
-            '''
             # show plot
             pause_debugplot(self.debugplot, pltshow=True)
 
