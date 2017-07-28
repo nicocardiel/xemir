@@ -1045,6 +1045,8 @@ def main(args=None):
 
     if args.debugplot % 10 != 0:
         fig = plt.figure()
+        mngr = plt.get_current_fig_manager()
+        mngr.window.setGeometry(0, 0, 640, 480)
         if args.background_image is not None:
             # read input FITS file
             hdulist = fits.open(args.background_image.name)
@@ -1071,7 +1073,8 @@ def main(args=None):
                                         list_islitlet,
                                         list_csu_bar_slit_center,
                                         ['m', 'c'], linetype='--')
-        pause_debugplot(debugplot=args.debugplot, pltshow=True)
+        pause_debugplot(debugplot=args.debugplot, pltshow=True,
+                        tight_layout=True)
 
 
 if __name__ == "__main__":
