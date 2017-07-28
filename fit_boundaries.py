@@ -13,10 +13,11 @@ import pickle
 import sys
 from uuid import uuid4
 
-from numina.array.display.polfit_residuals import polfit_residuals
 from numina.array.display.pause_debugplot import pause_debugplot
 from numina.array.display.ximshow import ximshow
 from emirdrp.core import EMIR_NBARS
+
+from ccd_line import SpectrumTrail
 
 from emir_definitions import NAXIS1_EMIR
 from emir_definitions import NAXIS2_EMIR
@@ -356,7 +357,7 @@ def return_params(islitlet, csu_bar_slit_center, params, parmodel):
 
 
 def expected_distorted_boundaries(islitlet, csu_bar_slit_center,
-                                  border, params, parmodel,
+                                  borderlist, params, parmodel,
                                   numpts, deg, debugplot=0):
     """Return polynomial coefficients of expected distorted boundaries.
 
@@ -366,10 +367,12 @@ def expected_distorted_boundaries(islitlet, csu_bar_slit_center,
         Number of slitlet.
     csu_bar_slit_center : float
         CSU bar slit center, in mm.
-    border : str
-        Boundary border to be computed. Allowed values are 'lower',
-        'middle', 'upper', 'both' (='lower' and 'upper') or 'all'
-        (='lower', 'middle' and 'upper').
+    borderlist : list of floats
+        Each float provides the fractional vertical location of the
+        spectrum trail relative to the lower boundary. In other words,
+        0.0 corresponds to the lower boundary, 1.0 to the upper
+        boundary, and any number in the interval (0,1) will be a
+        spectral trail in between.
     params : :class:`~lmfit.parameter.Parameters`
         Parameters to be employed in the prediction of the distorted
         boundaries.
@@ -387,17 +390,13 @@ def expected_distorted_boundaries(islitlet, csu_bar_slit_center,
 
     Returns
     -------
-    poly_lower and/or poly_middle and/or poly_upper : numpy.polynomial.Polynomial()
-        Lower and/or middle and/or upper polynomial fit to expected
-        boundaries.
+    list_spectrails : list of SpectrumTrail objects
+        List containing the fitted spectrum trails.
 
     """
 
     c2, c4, ff, slit_gap, slit_height, theta0, x0, y0, y_baseline = \
         return_params(islitlet, csu_bar_slit_center, params, parmodel)
-
-    if border not in ['lower', 'middle', 'upper', 'both', 'three']:
-        raise ValueError('Unexpected border:', border)
 
     xp = np.linspace(1, NAXIS1_EMIR, numpts)
     slit_dist = (slit_height * 10) + slit_gap
@@ -405,49 +404,20 @@ def expected_distorted_boundaries(islitlet, csu_bar_slit_center,
     # undistorted (constant) y-coordinate of the lower and upper boundaries
     ybottom = y_baseline * 100 + (islitlet - 1) * slit_dist
     ytop = ybottom + (slit_height * 10)
-    ymiddle = ybottom + (0.5 * slit_height * 10)
 
-    # avoid PyCharm warning (variables might by referenced before assignment)
-    poly_lower = poly_upper = poly_middle = None  # avoid PyCharm warning
-
-    if border in ['lower', 'both', 'three']:
+    list_spectrails = []
+    for borderval in borderlist:
+        yvalue = ybottom + borderval * (ytop - ybottom)
         # undistorted boundary
-        yp_bottom = np.ones(numpts) * ybottom
+        yp_value = np.ones(numpts) * yvalue
         # distorted boundary
-        xdist, ydist = exvp(xp, yp_bottom, x0=x0, y0=y0,
+        xdist, ydist = exvp(xp, yp_value, x0=x0, y0=y0,
                             c2=c2, c4=c4, theta0=theta0, ff=ff)
-        poly_lower, dum = polfit_residuals(xdist, ydist, deg,
-                                           debugplot=debugplot)
-    if border in ['upper', 'both', 'three']:
-        # undistorted boundary
-        yp_top = np.ones(numpts) * ytop
-        # distorted boundary
-        xdist, ydist = exvp(xp, yp_top, x0=x0, y0=y0,
-                            c2=c2, c4=c4, theta0=theta0, ff=ff)
-        poly_upper, dum = polfit_residuals(xdist, ydist, deg,
-                                           debugplot=debugplot)
+        spectrail = SpectrumTrail()  # declare SpectrumTrail instance
+        spectrail.fit(x=xdist, y=ydist, deg=deg, debugplot=debugplot)
+        list_spectrails.append(spectrail)
 
-    if border in ['middle', 'three']:
-        # undistorted boundary
-        yp_middle = np.ones(numpts) * ymiddle
-        # distorted boundary
-        xdist, ydist = exvp(xp, yp_middle, x0=x0, y0=y0,
-                            c2=c2, c4=c4, theta0=theta0, ff=ff)
-        poly_middle, dum = polfit_residuals(xdist, ydist, deg,
-                                            debugplot=debugplot)
-
-    if border == 'lower':
-        return poly_lower
-    elif border == 'middle':
-        return poly_middle
-    elif border == 'upper':
-        return poly_upper
-    elif border == 'both':
-        return poly_lower, poly_upper
-    elif border == 'three':
-        return poly_lower, poly_middle, poly_upper
-    else:
-        raise ValueError('Unexpected border:', border)
+    return list_spectrails
 
 
 def fun_residuals(params, parmodel, bounddict, numresolution,
@@ -497,12 +467,13 @@ def fun_residuals(params, parmodel, bounddict, numresolution,
                 tmp_dict = bounddict['contents'][tmp_slitlet][tmp_dateobs]
                 csu_bar_slit_center = tmp_dict['csu_bar_slit_center']
                 # expected boundaries using provided parameters
-                poly_lower_expected, poly_upper_expected = \
-                    expected_distorted_boundaries(
+                list_spectrails = expected_distorted_boundaries(
                         islitlet, csu_bar_slit_center,
-                        'both', params, parmodel,
+                        [0, 1], params, parmodel,
                         numpts=numresolution, deg=5, debugplot=0
                     )
+                poly_lower_expected = list_spectrails[0].poly_funct
+                poly_upper_expected = list_spectrails[1].poly_funct
                 # measured lower boundary
                 poly_lower_measured = np.polynomial.Polynomial(
                     tmp_dict['boundary_coef_lower']
@@ -620,10 +591,12 @@ def overplot_boundaries_from_params(ax, params, parmodel,
         tmpcolor = micolors[islitlet_lower % 2]
         pol_lower_expected = expected_distorted_boundaries(
             islitlet_lower, csu_bar_slit_center,
-            'lower', params, parmodel, numpts=101, deg=5, debugplot=0)
+            [0], params, parmodel, numpts=101, deg=5, debugplot=0
+        )[0].poly_funct
         pol_upper_expected = expected_distorted_boundaries(
             islitlet_upper, csu_bar_slit_center,
-            'upper', params, parmodel, numpts=101, deg=5, debugplot=0)
+            [1], params, parmodel, numpts=101, deg=5, debugplot=0
+        )[0].poly_funct
         xdum = np.linspace(1, NAXIS1_EMIR, num=NAXIS1_EMIR)
         ydum = pol_lower_expected(xdum)
         plt.plot(xdum, ydum, tmpcolor + linetype)
@@ -820,12 +793,12 @@ def save_boundaries_from_params_ds9(params, parmodel,
         )
         pol_lower_expected = expected_distorted_boundaries(
             islitlet_lower, csu_bar_slit_center,
-            'lower', params, parmodel, numpts=101, deg=5, debugplot=0
-        )
+            [0], params, parmodel, numpts=101, deg=5, debugplot=0
+        )[0].poly_funct
         pol_upper_expected = expected_distorted_boundaries(
             islitlet_upper, csu_bar_slit_center,
-            'upper', params, parmodel, numpts=101, deg=5, debugplot=0
-        )
+            [1], params, parmodel, numpts=101, deg=5, debugplot=0
+        )[0].poly_funct
         xdum = np.linspace(1, NAXIS1_EMIR, num=numpix)
         ydum = pol_lower_expected(xdum)
         for i in range(len(xdum)-1):
