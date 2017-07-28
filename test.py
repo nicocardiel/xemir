@@ -33,6 +33,68 @@ from numina.array.display.pause_debugplot import DEBUGPLOT_CODES
 class Slitlet2D(object):
     """Slitlet2D class definition.
 
+    Parameters
+    ==========
+    islitlet : int
+        Slitlet number.
+    params : :class:`~lmfit.parameter.Parameters`
+        Parameters to be employed in the prediction of the distorted
+        boundaries.
+    parmodel : str
+        Model to be assumed. Allowed values are 'longslit' and
+        'multislit'.
+    csu_conf : CsuConfiguration object
+        Instance of CsuConfiguration.
+    ymargin : int
+        Extra number of pixels above and below the enclosing rectangle
+        that defines the slitlet bounding box.
+    debugplot : int
+        Debugging level for messages and plots. For details see
+        'numina.array.display.pause_debugplot.py'.
+
+
+    Attributes
+    ==========
+    islitlet : int
+        Slitlet number.
+    csu_conf : CsuConfiguration object
+        Instance of CsuConfiguration.
+    bb_nc1_orig : int
+        Minimum X coordinate of the enclosing bounding box (in pixel
+        units) in the original image.
+    bb_nc2_orig : int
+        Maximum X coordinate of the enclosing bounding box (in pixel
+        units) in the original image.
+    bb_ns1_orig : int
+        Minimum Y coordinate of the enclosing bounding box (in pixel
+        units) in the original image.
+    bb_ns2_orig : int
+        Maximum Y coordinate of the enclosing bounding box (in pixel
+        units) in the original image.
+    x_inter_orig : 1d numpy array, float
+        X coordinates of the intersection points of arc lines with
+        spectrum trails in the original image.
+    y_inter_orig : 1d numpy array, float
+        Y coordinates of the intersection points of arc lines with
+        spectrum trails in the original image.
+    x_inter_rect : 1d numpy array, float
+        X coordinates of the intersection points of arc lines with
+        spectrum trails in the rectified image.
+    y_inter_rect : 1d numpy array, float
+        Y coordinates of the intersection points of arc lines with
+        spectrum trails in the rectified image.
+    x0_reference : float
+        X coordinate where the rectified y0_reference is computed
+        as the Y coordinate of the spectrum trails. The same value
+        is used for all the available spectrum trails.
+    list_spectrails: list of SpectrumTrail instances
+        List of spectrum trails defined.
+    list_arclines : list of ArcLine instances
+        List with identified arc lines.
+    debugplot : int
+        Debugging level for messages and plots. For details see
+        'numina.array.display.pause_debugplot.py'.
+
     """
 
     def __init__(self, islitlet, params, parmodel, csu_conf, ymargin=10,
