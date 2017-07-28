@@ -71,6 +71,14 @@ class Slitlet2D(object):
     bb_ns2_orig : int
         Maximum Y coordinate of the enclosing bounding box (in pixel
         units) in the original image.
+    x0_reference : float
+        X coordinate where the rectified y0_reference is computed
+        as the Y coordinate of the spectrum trails. The same value
+        is used for all the available spectrum trails.
+    list_spectrails: list of SpectrumTrail instances
+        List of spectrum trails defined.
+    list_arclines : list of ArcLine instances
+        List with identified arc lines.
     x_inter_orig : 1d numpy array, float
         X coordinates of the intersection points of arc lines with
         spectrum trails in the original image.
@@ -83,14 +91,6 @@ class Slitlet2D(object):
     y_inter_rect : 1d numpy array, float
         Y coordinates of the intersection points of arc lines with
         spectrum trails in the rectified image.
-    x0_reference : float
-        X coordinate where the rectified y0_reference is computed
-        as the Y coordinate of the spectrum trails. The same value
-        is used for all the available spectrum trails.
-    list_spectrails: list of SpectrumTrail instances
-        List of spectrum trails defined.
-    list_arclines : list of ArcLine instances
-        List with identified arc lines.
     debugplot : int
         Debugging level for messages and plots. For details see
         'numina.array.display.pause_debugplot.py'.
@@ -135,8 +135,12 @@ class Slitlet2D(object):
         if self.bb_ns2_orig > NAXIS2_EMIR:
             self.bb_ns2_orig = NAXIS2_EMIR
 
-        # place holder for arc lines
+        # place holder for still undefined members
         self.list_arc_lines = None
+        self.x_inter_orig = None
+        self.y_inter_orig = None
+        self.x_inter_rect = None
+        self.y_inter_rect = None
 
         # debugplot
         self.debugplot = debugplot
@@ -174,6 +178,14 @@ class Slitlet2D(object):
                  str(self.list_spectrails[2].poly_funct) + "\n" + \
             "- num. of associated arc lines: " + \
                str(number_arc_lines) + "\n" + \
+            "- x_inter_orig................:\n" + \
+                 str(self.x_inter_orig) + "\n" + \
+            "- y_inter_orig................:\n" + \
+                 str(self.y_inter_orig) + "\n" + \
+            "- x_inter_rect................:\n" + \
+                 str(self.x_inter_rect) + "\n" + \
+            "- y_inter_rect................:\n" + \
+                 str(self.y_inter_rect) + "\n" + \
             "- debugplot...................: " + \
                  str(self.debugplot)
 
@@ -201,6 +213,20 @@ class Slitlet2D(object):
 
         # transform to float
         slitlet2d = slitlet2d.astype(np.float)
+
+        # display slitlet2d with boundaries and middle spectrum trail
+        if abs(self.debugplot) in [21, 22]:
+            ax = ximshow(slitlet2d, title="Slitlet#" + str(self.islitlet),
+                         first_pixel=(self.bb_nc1_orig, self.bb_ns1_orig),
+                         show=False)
+            xdum = np.linspace(1, NAXIS1_EMIR, num=NAXIS1_EMIR)
+            ylower = self.list_spectrails[0].poly_funct(xdum)
+            ax.plot(xdum, ylower, 'b-')
+            ymiddle = self.list_spectrails[1].poly_funct(xdum)
+            ax.plot(xdum, ymiddle, 'b--')
+            yupper = self.list_spectrails[2].poly_funct(xdum)
+            ax.plot(xdum, yupper, 'b-')
+            pause_debugplot(debugplot=self.debugplot, pltshow=True)
 
         # return slitlet image
         return slitlet2d
@@ -254,22 +280,22 @@ class Slitlet2D(object):
             print('>>> sigmaG:', sigmag)
         if abs(self.debugplot) in [21, 22]:
             # display initial image with zscale cuts
-            title = "[slit #" + str(self.islitlet) + "]" + \
-                                    " (locate_unknown_arc_lines #1)"
+            title = "Slitlet#" + str(self.islitlet) + \
+                    " (locate_unknown_arc_lines, step #1)"
             ximshow(slitlet2d, title=title,
                     first_pixel=(self.bb_nc1_orig, self.bb_ns1_orig),
                     debugplot=self.debugplot)
             # display denoised image with zscale cuts
-            title = "[slit #" + str(self.islitlet) + "]" + \
-                    " (locate_unknown_arc_lines #2)"
+            title = "Slitlet#" + str(self.islitlet) + \
+                    " (locate_unknown_arc_lines, step #2)"
             ximshow(slitlet2d_dn, title=title,
                     first_pixel=(self.bb_nc1_orig, self.bb_ns1_orig),
                     debugplot=self.debugplot)
             # display image with different cuts
             z1z2 = (q50 + times_sigma_threshold * sigmag,
                     q50 + 2 * times_sigma_threshold * sigmag)
-            title = "[slit #" + str(self.islitlet) + "]" + \
-                    " (locate_unknown_arc_lines #3)"
+            title = "Slitlet#" + str(self.islitlet) + \
+                    " (locate_unknown_arc_lines, step #3)"
             ximshow(slitlet2d_dn, title=title, z1z2=z1z2,
                     first_pixel=(self.bb_nc1_orig, self.bb_ns1_orig),
                     debugplot=self.debugplot)
@@ -287,8 +313,8 @@ class Slitlet2D(object):
             print("Number of objects initially found:", no_objects)
         if abs(self.debugplot) in [21, 22]:
             # display all objects identified in the image
-            title = "[slit #" + str(self.islitlet) + "]" + \
-                    " (locate_unknown_arc_lines #4)"
+            title = "Slitlet#" + str(self.islitlet) + \
+                    " (locate_unknown_arc_lines, step #4)"
             z1z2 = (labels2d_objects.min(), labels2d_objects.max())
             ximshow(labels2d_objects, title=title,
                     first_pixel=(self.bb_nc1_orig, self.bb_ns1_orig),
@@ -349,8 +375,8 @@ class Slitlet2D(object):
         # display arc lines
         if abs(self.debugplot) in [21, 22]:
             # display all objects identified in the image
-            title = "[slit #" + str(self.islitlet) + "]" + \
-                    " (locate_unknown_arc_lines #5)"
+            title = "Slitlet#" + str(self.islitlet) + \
+                    " (locate_unknown_arc_lines, step #5)"
             z1z2 = (labels2d_objects.min(),
                     labels2d_objects.max())
             ax = ximshow(labels2d_objects, show=False, title=title,
@@ -446,8 +472,8 @@ class Slitlet2D(object):
             # compute image with only the arc lines passing the selection
             labels2d_arc_lines = labels2d_objects * mask_arc_lines
             # display background image with filtered arc lines
-            title = "[slit #" + str(self.islitlet) + "]" + \
-                    " (locate_unknown_arc_lines #6)"
+            title = "Slitlet#" + str(self.islitlet) + \
+                    " (locate_unknown_arc_lines, step #6)"
             z1z2 = (labels2d_arc_lines.min(),
                     labels2d_arc_lines.max())
             ax = ximshow(labels2d_arc_lines, show=False,
@@ -467,6 +493,86 @@ class Slitlet2D(object):
             x_tmp = [arc_line.xupper_line for arc_line in self.list_arc_lines]
             y_tmp = [arc_line.yupper_line for arc_line in self.list_arc_lines]
             ax.plot(x_tmp, y_tmp, 'w+')
+            # show plot
+            pause_debugplot(self.debugplot, pltshow=True)
+
+
+    def xy_spectrail_arc_intersections(self, slitlet2d=None):
+        """Compute intersection points of spectrum trails with arc lines.
+
+        The member list_arc_lines is updated with new keyword:keyval
+        values for each arc line.
+
+        Parameters
+        ----------
+        slitlet2d : 2d numpy array
+            Slitlet image to be displayed with the computed boundaries
+            and intersecting points overplotted. This argument is
+            optiona.
+
+        """
+
+        # protections
+        if self.list_arc_lines is None:
+            raise ValueError("Arc lines not sought")
+        number_spectrum_trails = len(self.list_spectrails)
+        if number_spectrum_trails == 0:
+            raise ValueError("Number of available spectrum trails is 0")
+        number_arc_lines = len(self.list_arc_lines)
+        if number_arc_lines == 0:
+            raise ValueError("Number of available arc lines is 0")
+
+        # intersection of the arc lines with the spectrum trails
+        # (note: the coordinates are computed using pixel values,
+        #  ranging from 1 to NAXIS1_EMIR, as given in the original
+        #  image reference system ---not in the slitlet image reference
+        #  system---)
+        self.x_inter_rect = np.array([])  # rectified image coordinates
+        self.y_inter_rect = np.array([])  # rectified image coordinates
+        for arcline in self.list_arc_lines:
+            spectrail = self.list_spectrails[1]  # middle spectrum trail
+            xroot, yroot = intersection_spectrail_arcline(
+                spectrail=spectrail, arcline=arcline
+            )
+            self.x_inter_rect = np.append(
+                self.x_inter_rect, [xroot] * number_spectrum_trails
+            )
+            for spectrail in self.list_spectrails:
+                self.y_inter_rect = np.append(
+                    self.y_inter_rect, spectrail.y_rectified)
+        #
+        self.x_inter_orig = np.array([])  # original image coordinates
+        self.y_inter_orig = np.array([])  # original image coordinates
+        for arcline in self.list_arc_lines:
+            for spectrail in self.list_spectrails:
+                xroot, yroot = intersection_spectrail_arcline(
+                    spectrail=spectrail, arcline=arcline
+                )
+                arcline.x_rectified = xroot
+                self.x_inter_orig = np.append(self.x_inter_orig, xroot)
+                self.y_inter_orig = np.append(self.y_inter_orig, yroot)
+
+        # display intersection points
+        if abs(self.debugplot % 10) != 0 and slitlet2d is not None:
+            # display image with zscale cuts
+            title = "Slitlet#" + str(self.islitlet) + \
+                    " (xy_spectrail_arc_intersections, step #1)"
+            ax = ximshow(slitlet2d, title=title,
+                         first_pixel=(self.bb_nc1_orig, self.bb_ns1_orig),
+                         show=False)
+            # spectrum trails
+            for spectrail in self.list_spectrails:
+                xdum, ydum = spectrail.linspace_pix(start=self.bb_nc1_orig,
+                                                    stop=self.bb_nc2_orig)
+                ax.plot(xdum, ydum, 'g')
+            # arc lines
+            for arcline in self.list_arc_lines:
+                xdum, ydum = arcline.linspace_pix(start=self.bb_ns1_orig,
+                                                  stop=self.bb_ns2_orig)
+                ax.plot(xdum, ydum, 'g')
+            # intersection points
+            ax.plot(self.x_inter_orig, self.y_inter_orig, 'co')
+            ax.plot(self.x_inter_rect, self.y_inter_rect, 'bo')
             # show plot
             pause_debugplot(self.debugplot, pltshow=True)
 
@@ -519,30 +625,24 @@ def main(args=None):
     islitlet_min = fitted_bound_param['tags']['islitlet_min']
     islitlet_max = fitted_bound_param['tags']['islitlet_max']
     list_islitlets = []
+
     for islitlet in range(islitlet_min, islitlet_max + 1):
+
         # define Slitlet2D object
         slt = Slitlet2D(islitlet=islitlet,
                         params=params, parmodel=parmodel,
                         csu_conf=csu_conf,
                         debugplot=args.debugplot)
+
         # extract 2D image corresponding to the selected slitlet
         slitlet2d = slt.extract_slitlet2d(image2d)
-        # display slitlet2d with boundaries and middle spectrum trail
-        if abs(args.debugplot) in [21, 22]:
-            ax = ximshow(slitlet2d, title="Slitlet#" + str(islitlet),
-                         first_pixel=(slt.bb_nc1_orig, slt.bb_ns1_orig),
-                         show=False)
-            xdum = np.linspace(1, NAXIS1_EMIR, num=NAXIS1_EMIR)
-            ylower = slt.list_spectrails[0].poly_funct(xdum)
-            ax.plot(xdum, ylower, 'b-')
-            ymiddle = slt.list_spectrails[1].poly_funct(xdum)
-            ax.plot(xdum, ymiddle, 'b--')
-            yupper = slt.list_spectrails[2].poly_funct(xdum)
-            ax.plot(xdum, yupper, 'b-')
-            pause_debugplot(debugplot=args.debugplot, pltshow=True)
+
         # locate unknown arc lines
         slt.locate_unknown_arc_lines(slitlet2d=slitlet2d)
-        #
+
+        # compute intersections between spectrum trails and arc lines
+        slt.debugplot = 12
+        slt.xy_spectrail_arc_intersections(slitlet2d=slitlet2d)
         #...
         #...
         #
