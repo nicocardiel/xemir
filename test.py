@@ -8,6 +8,8 @@ import numpy as np
 import sys
 
 from matplotlib.patches import Rectangle
+from numina.array.display.polfit_residuals import \
+    polfit_residuals_with_sigma_rejection
 from numina.array.display.ximshow import ximshow
 from numina.array.display.ximshow import ximshow_file
 from numina.array.display.pause_debugplot import pause_debugplot
@@ -38,6 +40,7 @@ class Slitlet2D(object):
 
         # slitlet number
         self.islitlet = islitlet
+        self.csu_conf = csu_conf.csu_bar_slit_center
 
         # horizontal bounding box
         self.bb_nc1_orig = 1
@@ -89,6 +92,8 @@ class Slitlet2D(object):
         output = "<Slilet2D instance>\n" + \
             "- islitlet....................: " + \
                  str(self.islitlet) + "\n" + \
+            "- csu_conf....................: " + \
+                 str(self.csu_conf) + "\n" + \
             "- x0_reference................: " + \
                  str(self.x0_reference) + "\n" + \
             "- bb_nc1_orig.................: " + \
@@ -142,7 +147,8 @@ class Slitlet2D(object):
                                  times_sigma_threshold=4,
                                  minimum_threshold=None,
                                  delta_x_max=30,
-                                 delta_y_min=30):
+                                 delta_y_min=30,
+                                 min_dist_from_middle=15):
         """Determine the location of known arc lines in slitlet.
 
         Parameters
@@ -158,6 +164,10 @@ class Slitlet2D(object):
             Maximum size of potential arc line in the X direction.
         delta_y_min : float
             Minimum size of potential arc line in the Y direction.
+        min_dist_from_middle : float
+            Minimum Y distance from the middle spectrum trail to the
+            extreme of the potential arc line. This constraint avoid
+            detecting arc line reflections as bone fide arc lines.
 
         """
 
@@ -254,7 +264,8 @@ class Slitlet2D(object):
                     self.list_spectrails[1].poly_funct(xmiddle_slice)
                 yini_slice = slice_y.start + self.bb_ns1_orig - 0.5
                 yend_slice = yini_slice + delta_y
-                if yini_slice <= ymiddle_slice <= yend_slice:
+                if yini_slice + min_dist_from_middle <= ymiddle_slice <= \
+                        yend_slice - min_dist_from_middle:
                     slices_ok[i] = True
 
         # generate list with ID of arc lines (note that first object is
@@ -265,7 +276,7 @@ class Slitlet2D(object):
                 list_slices_ok.append(i + 1)
         number_arc_lines = len(list_slices_ok)
         if abs(self.debugplot) >= 10:
-            print("\nNumber of arc lines finally identified is:",
+            print("\nNumber of arc lines initially identified is:",
                   number_arc_lines)
             if number_arc_lines > 0:
                 print("Slice ID of lines passing the selection:\n",
@@ -308,12 +319,7 @@ class Slitlet2D(object):
             # show plot
             pause_debugplot(self.debugplot, pltshow=True)
 
-        # generate mask with all the arc-line points passing the selection
-        mask_arc_lines = np.zeros_like(slitlet2d_dn)
-        for k in list_slices_ok:
-            mask_arc_lines[labels2d_objects == k] = 1
-
-        # adjust individual arc lines passing the selection
+        # adjust individual arc lines passing the initial selection
         self.list_arc_lines = []  # list of ArcLines
         for k in range(number_arc_lines):  # fit each arc line
             # select points to be fitted for a particular arc line
@@ -329,7 +335,53 @@ class Slitlet2D(object):
             # update list with identified ArcLines
             self.list_arc_lines.append(arc_line)
 
-        if abs(self.debugplot) >= 10:
+        # remove arc lines with unexpected slopes
+        yfit = np.array([self.list_arc_lines[k].poly_funct.coef[1]
+                         for k in range(number_arc_lines) ])
+        xfit = np.zeros(number_arc_lines)
+        # intersection between middle spectrum trail and arc line
+        for k in range(number_arc_lines):
+            arcline = self.list_arc_lines[k]
+            # approximate location of the solution
+            expected_x = (arcline.xlower_line + arcline.xupper_line) / 2.0
+            # composition of polynomials to find intersection as
+            # one of the roots of a new polynomial
+            rootfunct = arcline.poly_funct(self.list_spectrails[1].poly_funct)
+            rootfunct.coef[1] -= 1
+            # compute roots to find solution
+            tmp_xroots = rootfunct.roots()
+            # take the nearest root to the expected location
+            xroot = tmp_xroots[np.abs(tmp_xroots - expected_x).argmin()]
+            if np.isreal(xroot):
+                xroot = xroot.real
+            else:
+                raise ValueError("xroot=" + str(xroot) +
+                                 " is a complex number")
+            xfit[k] = xroot
+        # fit slope versus x-coordinate of the intersection of the arc line
+        # with the middle spectrum trail
+        polydum, residum, rejected = polfit_residuals_with_sigma_rejection(
+            x=xfit, y=yfit, deg=5, times_sigma_reject=4.0,
+            xlabel='arc line center (islitlet #' + str(self.islitlet) + ')',
+            ylabel='arc line slope', debugplot=0
+        )
+        # remove rejected arc lines
+        if len(rejected) > 0:
+            if abs(self.debugplot) >= 10:
+                print('Rejecting', sum(rejected),
+                      'arc lines with suspicious slopes: Slice ID',
+                      [list_slices_ok[k] for k in range(number_arc_lines)
+                       if rejected[k]])
+            self.list_arc_lines = \
+                [self.list_arc_lines[k] for k in range(number_arc_lines)
+                 if not rejected[k]]
+            # recompute number of arc lines
+            number_arc_lines = len(self.list_arc_lines)
+            if abs(self.debugplot) >= 10:
+                print("\nNumber of arc lines finally identified is:",
+                      number_arc_lines)
+
+        if abs(self.debugplot) >= 20:
             # print list of arc lines
             print('\nlist_arc_lines:')
             for k in range(number_arc_lines):
@@ -337,6 +389,10 @@ class Slitlet2D(object):
 
         # display results
         if abs(self.debugplot) in [21, 22]:
+            # generate mask with all the arc-line points passing the selection
+            mask_arc_lines = np.zeros_like(slitlet2d_dn)
+            for k in list_slices_ok:
+                mask_arc_lines[labels2d_objects == k] = 1
             # compute image with only the arc lines passing the selection
             labels2d_arc_lines = labels2d_objects * mask_arc_lines
             # display background image with filtered arc lines
@@ -464,7 +520,8 @@ def main(args=None):
                         stop=arcline.yupper_line
                     )
                     ax.plot(xdum, ydum, 'g-')
-        pause_debugplot(args.debugplot, pltshow=True)
+        # pause_debugplot(args.debugplot, pltshow=True)
+        pause_debugplot(12, pltshow=True)
         raw_input("Pause...")
 
 
