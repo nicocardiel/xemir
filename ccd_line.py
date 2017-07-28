@@ -245,3 +245,43 @@ class SpectrumTrail(CCDLine):
         """Return x,y values evaluated with a given pixel step."""
         return CCDLine.linspace_pix(self, start=start, stop=stop,
                                     pixel_step=pixel_step, y_vs_x=y_vs_x)
+
+
+def intersection_spectrail_arcline(spectrail, arcline):
+    """Compute intersection of spectrum trail with arc line.
+
+    Parameters
+    ----------
+    spectrail : SpectrumTrail object
+        Instance of SpectrumTrail class.
+    arcline : ArcLine object
+        Instance of ArcLine class
+
+    Returns
+    -------
+    xroot, yroot : tuple of floats
+        (X,Y) coordinates of the intersection.
+
+    """
+
+    # approximate location of the solution
+    expected_x = (arcline.xlower_line + arcline.xupper_line) / 2.0
+
+    # composition of polynomials to find intersection as
+    # one of the roots of a new polynomial
+    rootfunct = arcline.poly_funct(spectrail.poly_funct)
+    rootfunct.coef[1] -= 1
+    # compute roots to find solution
+    tmp_xroots = rootfunct.roots()
+
+    # take the nearest root to the expected location
+    xroot = tmp_xroots[np.abs(tmp_xroots - expected_x).argmin()]
+    if np.isreal(xroot):
+        xroot = xroot.real
+    else:
+        raise ValueError("xroot=" + str(xroot) +
+                         " is a complex number")
+    yroot = spectrail.poly_funct(xroot)
+
+    return xroot, yroot
+
