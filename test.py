@@ -24,8 +24,8 @@ from fit_boundaries import bound_params_from_dict
 from fit_boundaries import expected_distorted_boundaries
 from rescale_array_to_z1z2 import rescale_array_to_z1z2
 from rescale_array_to_z1z2 import rescale_array_from_z1z2
-from ccd_line import SpectrumTrail
 from ccd_line import ArcLine
+from ccd_line import intersection_spectrail_arcline
 
 from numina.array.display.pause_debugplot import DEBUGPLOT_CODES
 
@@ -342,22 +342,10 @@ class Slitlet2D(object):
         # intersection between middle spectrum trail and arc line
         for k in range(number_arc_lines):
             arcline = self.list_arc_lines[k]
-            # approximate location of the solution
-            expected_x = (arcline.xlower_line + arcline.xupper_line) / 2.0
-            # composition of polynomials to find intersection as
-            # one of the roots of a new polynomial
-            rootfunct = arcline.poly_funct(self.list_spectrails[1].poly_funct)
-            rootfunct.coef[1] -= 1
-            # compute roots to find solution
-            tmp_xroots = rootfunct.roots()
-            # take the nearest root to the expected location
-            xroot = tmp_xroots[np.abs(tmp_xroots - expected_x).argmin()]
-            if np.isreal(xroot):
-                xroot = xroot.real
-            else:
-                raise ValueError("xroot=" + str(xroot) +
-                                 " is a complex number")
-            xfit[k] = xroot
+            xfit[k], ydum = intersection_spectrail_arcline(
+                self.list_spectrails[1], arcline
+            )
+
         # fit slope versus x-coordinate of the intersection of the arc line
         # with the middle spectrum trail
         polydum, residum, rejected = polfit_residuals_with_sigma_rejection(
