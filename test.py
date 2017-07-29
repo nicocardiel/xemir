@@ -61,8 +61,17 @@ class Slitlet2D(object):
     ==========
     islitlet : int
         Slitlet number.
-    csu_conf : CsuConfiguration object
-        Instance of CsuConfiguration.
+    csu_bar_left : float
+        Location (mm) of the left bar for each slitlet.
+    csu_bar_right : list of floats
+        Location (mm) of the right bar for each slitlet, using the
+        same origin employed for csu_bar_left (which is not the
+        value stored in the FITS keywords.
+    csu_bar_slit_center : list of floats
+        Middle point (mm) in between the two bars defining a slitlet.
+    csu_bar_slit_width : list of floats
+        Slitlet width (mm), computed as the distance between the two
+        bars defining the slitlet.
     bb_nc1_orig : int
         Minimum X coordinate of the enclosing bounding box (in pixel
         units) in the original image.
@@ -95,8 +104,12 @@ class Slitlet2D(object):
     y_inter_rect : 1d numpy array, float
         Y coordinates of the intersection points of arc lines with
         spectrum trails in the rectified image.
-    ttd : transform.PolynomialTransform instance
-        Direct transformation to rectify the image.
+    ttd_aij : numpy array
+        Polynomial coefficents corresponding to the rectification
+        transformation coefficients a_ij.
+    ttd_bij : numpy array
+        Polynomial coefficents corresponding to the rectification
+        transformation coefficients b_ij.
     debugplot : int
         Debugging level for messages and plots. For details see
         'numina.array.display.pause_debugplot.py'.
@@ -108,7 +121,10 @@ class Slitlet2D(object):
 
         # slitlet number
         self.islitlet = islitlet
-        self.csu_conf = csu_conf.csu_bar_slit_center
+        self.csu_bar_left = csu_conf.csu_bar_left[islitlet - 1]
+        self.csu_bar_right = csu_conf.csu_bar_right[islitlet - 1]
+        self.csu_bar_slit_center = csu_conf.csu_bar_slit_center[islitlet - 1]
+        self.csu_bar_slit_width = csu_conf.csu_bar_slit_width[islitlet - 1]
 
         # horizontal bounding box
         self.bb_nc1_orig = 1
@@ -122,7 +138,7 @@ class Slitlet2D(object):
         self.i_middle_spectrail = 1
         self.i_upper_spectrail = 2
         self.list_spectrails = expected_distorted_boundaries(
-                islitlet, csu_conf.csu_bar_slit_center[islitlet - 1],
+                islitlet, self.csu_bar_slit_center,
                 [0, 0.5, 1], params, parmodel,
                 numpts=101, deg=5, debugplot=0
             )
@@ -147,7 +163,8 @@ class Slitlet2D(object):
         self.y_inter_orig = None
         self.x_inter_rect = None
         self.y_inter_rect = None
-        self.ttd = None
+        self.ttd_aij = None
+        self.ttd_bij = None
 
         # debugplot
         self.debugplot = debugplot
@@ -155,26 +172,18 @@ class Slitlet2D(object):
     def __repr__(self):
         """Define printable representation of a Slitlet2D instance."""
 
-        # list of associated arc lines
-        if self.list_arc_lines is None:
-            number_arc_lines = None
-        else:
-            number_arc_lines = len(self.list_arc_lines)
-
-        # transformation to rectify image
-        if self.ttd is None:
-            str_ttd_params_0 = "None"
-            str_ttd_params_1 = "None"
-        else:
-            str_ttd_params_0 = str(self.ttd.params[0])
-            str_ttd_params_1 = str(self.ttd.params[1])
-
         # string with all the information
         output = "<Slilet2D instance>\n" + \
             "- islitlet....................: " + \
                  str(self.islitlet) + "\n" + \
-            "- csu_conf....................: " + \
-                 str(self.csu_conf) + "\n" + \
+            "- csu_bar_left................: " + \
+                 str(self.csu_bar_left) + "\n" + \
+            "- csu_bar_right...............: " + \
+                 str(self.csu_bar_right) + "\n" + \
+            "- csu_bar_slit_center.........: " + \
+                 str(self.csu_bar_slit_center) + "\n" + \
+            "- csu_bar_slit_width..........: " + \
+                 str(self.csu_bar_slit_width) + "\n" + \
             "- x0_reference................: " + \
                  str(self.x0_reference) + "\n" + \
             "- bb_nc1_orig.................: " + \
@@ -185,27 +194,40 @@ class Slitlet2D(object):
                  str(self.bb_ns1_orig) + "\n" + \
             "- bb_ns2_orig.................: " + \
                  str(self.bb_ns2_orig) + "\n" + \
-            "- lower spectrail.poly_funct..:\n" + \
+            "- lower spectrail.poly_funct..:\n\t" + \
                  str(self.list_spectrails[self.i_lower_spectrail].poly_funct)\
                  + "\n" + \
-            "- middle spectrail.poly_funct.:\n" + \
+            "- middle spectrail.poly_funct.:\n\t" + \
                  str(self.list_spectrails[self.i_middle_spectrail].poly_funct)\
                  + "\n" + \
-            "- upper spectrail.poly_funct..:\n" + \
+            "- upper spectrail.poly_funct..:\n\t" + \
                  str(self.list_spectrails[self.i_upper_spectrail].poly_funct)\
-                 + "\n" + \
-            "- num. of associated arc lines: " + \
-               str(number_arc_lines) + "\n" + \
-            "- x_inter_orig................:\n" + \
-                 str(self.x_inter_orig) + "\n" + \
-            "- y_inter_orig................:\n" + \
-                 str(self.y_inter_orig) + "\n" + \
-            "- x_inter_rect................:\n" + \
-                 str(self.x_inter_rect) + "\n" + \
-            "- y_inter_rect................:\n" + \
-                 str(self.y_inter_rect) + "\n" + \
-            "- ttd_params[0]......:\n\t" + str_ttd_params_0 + "\n" + \
-            "- ttd_params[1]......:\n\t" + str_ttd_params_1 + "\n" + \
+                 + "\n"
+
+        if self.list_arc_lines is None:
+            number_arc_lines = None
+        else:
+            number_arc_lines = len(self.list_arc_lines)
+
+        output += "- num. of associated arc lines: " + \
+                  str(number_arc_lines) + "\n"
+
+        for dumval, dumlab in zip(
+                [self.x_inter_orig, self.y_inter_orig,
+                 self.x_inter_rect, self.y_inter_rect],
+                ["x_inter_orig", "y_inter_orig",
+                 "x_inter_rect", "y_inter_rect"]
+        ):
+            if dumval is None:
+                output += "- " + dumlab + "................: None\n"
+            else:
+                output += "- " + dumlab + "................: " + \
+                          str(len(dumval)) + " values defined\n\t[" + \
+                          str(dumval[0]) + ", ..., " + \
+                          str(dumval[-1]) + "]\n"
+        output += \
+            "- ttd_aij............:\n\t" + str(self.ttd_aij) + "\n" + \
+            "- ttd_bij............:\n\t" + str(self.ttd_bij) + "\n" + \
             "- debugplot...................: " + \
                  str(self.debugplot)
 
@@ -628,7 +650,7 @@ class Slitlet2D(object):
             len(self.y_inter_rect) != npoints:
             raise ValueError('Unexpected different number of points')
 
-        # correct coordinates from origin in order to manipulate
+        # IMPORTANT: correct coordinates from origin in order to manipulate
         # coordinates corresponding to image indices
         x_inter_orig_shifted = self.x_inter_orig - self.bb_nc1_orig
         y_inter_orig_shifted = self.y_inter_orig - self.bb_ns1_orig
@@ -694,10 +716,7 @@ class Slitlet2D(object):
                       numpoints=1)
             pause_debugplot(self.debugplot, pltshow=True)
 
-        # In order to avoid the need of solving a large system of
-        # equations (as shown in the previous commented-out code), next
-        # we prefer to solve 2 systems of equations with half number
-        # of unknowns each.
+        # solve 2 systems of equations with half number of unknowns each
         if order == 1:
             A = np.vstack([np.ones(npoints),
                            x_inter_rect_scaled,
@@ -738,7 +757,7 @@ class Slitlet2D(object):
                            y_inter_rect_scaled ** 4]).T
         else:
             raise ValueError("Invalid order=" + str(order))
-        self.ttd = transform.PolynomialTransform(
+        ttd = transform.PolynomialTransform(
             np.vstack(
                 [np.linalg.lstsq(A, x_inter_orig_scaled)[0],
                  np.linalg.lstsq(A, y_inter_orig_scaled)[0]]
@@ -747,17 +766,17 @@ class Slitlet2D(object):
 
         # reverse normalization to recover coefficients of the
         # transformation in the correct system
-        factor = np.zeros_like(self.ttd.params[0])
+        factor = np.zeros_like(ttd.params[0])
         k = 0
         for i in range(order + 1):
             for j in range(i + 1):
                 factor[k] = (x_scale**(i-j)) * (y_scale**j)
                 k += 1
-        self.ttd.params[0] *= factor/x_scale
-        self.ttd.params[1] *= factor/y_scale
+        self.ttd_aij = ttd.params[0] * factor/x_scale
+        self.ttd_bij = ttd.params[1] * factor/y_scale
         if self.debugplot >= 10:
-            print("ttd.params X:\n", self.ttd.params[0])
-            print("ttd.params Y:\n", self.ttd.params[1])
+            print("ttd_aij X:\n", self.ttd_aij)
+            print("ttd_bij Y:\n", self.ttd_bij)
 
         # display slitlet with intersection points and grid indicating
         # the fitted transformation
@@ -777,16 +796,7 @@ class Slitlet2D(object):
                 yy0 = spectrail.y_rectified
                 yy = np.tile([yy0 - self.bb_ns1_orig], xx.size)
                 ax.plot(xx + self.bb_nc1_orig, yy + self.bb_ns1_orig, "b")
-                xxx = np.zeros_like(xx)
-                yyy = np.zeros_like(yy)
-                k = 0
-                for i in range(order + 1):
-                    for j in range(i + 1):
-                        xxx += self.ttd.params[0][k] * \
-                               (xx ** (i - j)) * (yy ** j)
-                        yyy += self.ttd.params[1][k] * \
-                               (xx ** (i - j)) * (yy ** j)
-                        k += 1
+                xxx, yyy = fmap(order, self.ttd_aij, self.ttd_bij, xx, yy)
                 ax.plot(xxx + self.bb_nc1_orig, yyy + self.bb_ns1_orig, "g")
             # grid with fitted transformation: arc lines
             ylower_line = \
@@ -802,20 +812,52 @@ class Slitlet2D(object):
                 xline = arc_line.x_rectified - self.bb_nc1_orig
                 xx = np.array([xline] * n_points)
                 ax.plot(xx + self.bb_nc1_orig, yy + self.bb_ns1_orig, "b")
-                xxx = np.zeros_like(xx)
-                yyy = np.zeros_like(yy)
-                k = 0
-                for i in range(order + 1):
-                    for j in range(i + 1):
-                        xxx += self.ttd.params[0][k] * \
-                               (xx ** (i - j)) * (yy ** j)
-                        yyy += self.ttd.params[1][k] * \
-                               (xx ** (i - j)) * (yy ** j)
-                        k += 1
-                ax.plot(xxx + self.bb_nc1_orig,
-                        yyy + self.bb_ns1_orig, "c")
+                xxx, yyy = fmap(order, self.ttd_aij, self.ttd_bij, xx, yy)
+                ax.plot(xxx + self.bb_nc1_orig, yyy + self.bb_ns1_orig, "c")
             # show plot
             pause_debugplot(self.debugplot, pltshow=True)
+
+
+def fmap(order, aij, bij, x, y):
+    """Evaluate the 2D polynomial transformation.
+
+    Parameters
+    ==========
+    order : int
+        Order of the polynomial transformation.
+    aij : numpy array
+        Polynomial coefficents corresponding to a_ij.
+    bij : numpy array
+        Polynomial coefficents corresponding to b_ij.
+    x : numpy array or float
+        X coordinate values where the transformation is computed. Note
+        that these values correspond to array indices.
+    y : numpy array or float
+        Y coordinate values where the transformation is computed. Note
+        that these values correspond to array indices.
+
+    Returns
+    =======
+    u : numpy array or float
+        U coordinate values.
+    v : numpy array or float
+        V coordinate values.
+
+    """
+
+    u = np.zeros_like(x)
+    v = np.zeros_like(y)
+
+    k = 0
+    for i in range(order + 1):
+        for j in range(i + 1):
+            u += aij[k] * \
+                 (x ** (i - j)) * (y ** j)
+            v += bij[k] * \
+                 (x ** (i - j)) * (y ** j)
+            k += 1
+
+    return u, v
 
 
 def main(args=None):
@@ -887,6 +929,8 @@ def main(args=None):
         # compute rectification transformation
         slt.debugplot = 12
         slt.estimate_tt_to_rectify(order=2, slitlet2d=slitlet2d)
+        print(slt)
+        pause_debugplot(12, optional_prompt="Stop here!")
 
         # rectify image
         #...
