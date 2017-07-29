@@ -4,17 +4,19 @@ from __future__ import print_function
 import argparse
 from astropy.io import fits
 import json
+from matplotlib.patches import Rectangle
 import numpy as np
+from scipy import ndimage
+from skimage import restoration
+from skimage import transform
 import sys
 
-from matplotlib.patches import Rectangle
 from numina.array.display.polfit_residuals import \
     polfit_residuals_with_sigma_rejection
+from numina.array.display.ximplotxy import ximplotxy
 from numina.array.display.ximshow import ximshow
 from numina.array.display.ximshow import ximshow_file
 from numina.array.display.pause_debugplot import pause_debugplot
-from scipy import ndimage
-from skimage import restoration
 
 from csu_configuration import CsuConfiguration
 from dtu_configuration import DtuConfiguration
@@ -28,6 +30,8 @@ from ccd_line import ArcLine
 from ccd_line import intersection_spectrail_arcline
 
 from numina.array.display.pause_debugplot import DEBUGPLOT_CODES
+
+FUNCTION_EVALUATIONS = 0
 
 
 class Slitlet2D(object):
@@ -91,6 +95,8 @@ class Slitlet2D(object):
     y_inter_rect : 1d numpy array, float
         Y coordinates of the intersection points of arc lines with
         spectrum trails in the rectified image.
+    ttd : transform.PolynomialTransform instance
+        Direct transformation to rectify the image.
     debugplot : int
         Debugging level for messages and plots. For details see
         'numina.array.display.pause_debugplot.py'.
@@ -111,10 +117,10 @@ class Slitlet2D(object):
         # reference abscissa
         self.x0_reference = float(NAXIS1_EMIR) / 2.0 + 0.5  # single float
 
-        # compute spectrum trails:
-        # 0 : lower boundary
-        # 1 : middle spectrum
-        # 2 : upper boundary
+        # compute spectrum trails and store in which order they are computed
+        self.i_lower_spectrail = 0
+        self.i_middle_spectrail = 1
+        self.i_upper_spectrail = 2
         self.list_spectrails = expected_distorted_boundaries(
                 islitlet, csu_conf.csu_bar_slit_center[islitlet - 1],
                 [0, 0.5, 1], params, parmodel,
@@ -126,8 +132,8 @@ class Slitlet2D(object):
 
         # determine vertical bounding box
         xdum = np.linspace(1, NAXIS1_EMIR, num=NAXIS1_EMIR)
-        ylower = self.list_spectrails[0].poly_funct(xdum)
-        yupper = self.list_spectrails[2].poly_funct(xdum)
+        ylower = self.list_spectrails[self.i_lower_spectrail].poly_funct(xdum)
+        yupper = self.list_spectrails[self.i_upper_spectrail].poly_funct(xdum)
         self.bb_ns1_orig = int(ylower.min() + 0.5) - ymargin
         if self.bb_ns1_orig < 1:
             self.bb_ns1_orig = 1
@@ -141,6 +147,7 @@ class Slitlet2D(object):
         self.y_inter_orig = None
         self.x_inter_rect = None
         self.y_inter_rect = None
+        self.ttd = None
 
         # debugplot
         self.debugplot = debugplot
@@ -153,6 +160,14 @@ class Slitlet2D(object):
             number_arc_lines = None
         else:
             number_arc_lines = len(self.list_arc_lines)
+
+        # transformation to rectify image
+        if self.ttd is None:
+            str_ttd_params_0 = "None"
+            str_ttd_params_1 = "None"
+        else:
+            str_ttd_params_0 = str(self.ttd.params[0])
+            str_ttd_params_1 = str(self.ttd.params[1])
 
         # string with all the information
         output = "<Slilet2D instance>\n" + \
@@ -170,12 +185,15 @@ class Slitlet2D(object):
                  str(self.bb_ns1_orig) + "\n" + \
             "- bb_ns2_orig.................: " + \
                  str(self.bb_ns2_orig) + "\n" + \
-            "- spectrail[0].poly_funct.....:\n" + \
-                 str(self.list_spectrails[0].poly_funct) + "\n" + \
-            "- spectrail[1].poly_funct.....:\n" + \
-                 str(self.list_spectrails[1].poly_funct) + "\n" + \
-            "- spectrail[2].poly_funct.....:\n" + \
-                 str(self.list_spectrails[2].poly_funct) + "\n" + \
+            "- lower spectrail.poly_funct..:\n" + \
+                 str(self.list_spectrails[self.i_lower_spectrail].poly_funct)\
+                 + "\n" + \
+            "- middle spectrail.poly_funct.:\n" + \
+                 str(self.list_spectrails[self.i_middle_spectrail].poly_funct)\
+                 + "\n" + \
+            "- upper spectrail.poly_funct..:\n" + \
+                 str(self.list_spectrails[self.i_upper_spectrail].poly_funct)\
+                 + "\n" + \
             "- num. of associated arc lines: " + \
                str(number_arc_lines) + "\n" + \
             "- x_inter_orig................:\n" + \
@@ -186,6 +204,8 @@ class Slitlet2D(object):
                  str(self.x_inter_rect) + "\n" + \
             "- y_inter_rect................:\n" + \
                  str(self.y_inter_rect) + "\n" + \
+            "- ttd_params[0]......:\n\t" + str_ttd_params_0 + "\n" + \
+            "- ttd_params[1]......:\n\t" + str_ttd_params_1 + "\n" + \
             "- debugplot...................: " + \
                  str(self.debugplot)
 
@@ -220,11 +240,14 @@ class Slitlet2D(object):
                          first_pixel=(self.bb_nc1_orig, self.bb_ns1_orig),
                          show=False)
             xdum = np.linspace(1, NAXIS1_EMIR, num=NAXIS1_EMIR)
-            ylower = self.list_spectrails[0].poly_funct(xdum)
+            ylower = \
+                self.list_spectrails[self.i_lower_spectrail].poly_funct(xdum)
             ax.plot(xdum, ylower, 'b-')
-            ymiddle = self.list_spectrails[1].poly_funct(xdum)
+            ymiddle = \
+                self.list_spectrails[self.i_middle_spectrail].poly_funct(xdum)
             ax.plot(xdum, ymiddle, 'b--')
-            yupper = self.list_spectrails[2].poly_funct(xdum)
+            yupper = \
+                self.list_spectrails[self.i_upper_spectrail].poly_funct(xdum)
             ax.plot(xdum, yupper, 'b-')
             pause_debugplot(debugplot=self.debugplot, pltshow=True)
 
@@ -348,8 +371,9 @@ class Slitlet2D(object):
                 # corner of the pixel
                 xini_slice = slice_x.start + self.bb_nc1_orig - 0.5
                 xmiddle_slice = xini_slice + delta_x / 2
-                ymiddle_slice = \
-                    self.list_spectrails[1].poly_funct(xmiddle_slice)
+                polydum = \
+                    self.list_spectrails[self.i_middle_spectrail].poly_funct
+                ymiddle_slice = polydum(xmiddle_slice)
                 yini_slice = slice_y.start + self.bb_ns1_orig - 0.5
                 yend_slice = yini_slice + delta_y
                 if yini_slice + min_dist_from_middle <= ymiddle_slice <= \
@@ -431,7 +455,7 @@ class Slitlet2D(object):
         for k in range(number_arc_lines):
             arcline = self.list_arc_lines[k]
             xfit[k], ydum = intersection_spectrail_arcline(
-                self.list_spectrails[1], arcline
+                self.list_spectrails[self.i_middle_spectrail], arcline
             )
 
         # fit slope versus x-coordinate of the intersection of the arc line
@@ -508,7 +532,7 @@ class Slitlet2D(object):
         slitlet2d : 2d numpy array
             Slitlet image to be displayed with the computed boundaries
             and intersecting points overplotted. This argument is
-            optiona.
+            optional.
 
         """
 
@@ -530,7 +554,8 @@ class Slitlet2D(object):
         self.x_inter_rect = np.array([])  # rectified image coordinates
         self.y_inter_rect = np.array([])  # rectified image coordinates
         for arcline in self.list_arc_lines:
-            spectrail = self.list_spectrails[1]  # middle spectrum trail
+            # middle spectrum trail
+            spectrail = self.list_spectrails[self.i_middle_spectrail]
             xroot, yroot = intersection_spectrail_arcline(
                 spectrail=spectrail, arcline=arcline
             )
@@ -573,6 +598,222 @@ class Slitlet2D(object):
             # intersection points
             ax.plot(self.x_inter_orig, self.y_inter_orig, 'co')
             ax.plot(self.x_inter_rect, self.y_inter_rect, 'bo')
+            # show plot
+            pause_debugplot(self.debugplot, pltshow=True)
+
+    def estimate_tt_to_rectify(self, order, slitlet2d=None):
+        """Estimate the polynomial transformation to rectify the image.
+
+        Parameters
+        ----------
+        order = int
+            Order of the polynomial transformation.
+        slitlet2d : 2d numpy array
+            Slitlet image to be displayed with the computed boundaries
+            and intersecting points overplotted. This argument is
+            optional.
+
+        """
+
+        # protections
+        if self.x_inter_orig is None or \
+                        self.y_inter_orig is None or \
+                        self.x_inter_rect is None or \
+                        self.y_inter_rect is None:
+            raise ValueError('Intersection points not computed')
+
+        npoints = len(self.x_inter_orig)
+        if len(self.y_inter_orig) != npoints or \
+            len(self.x_inter_rect) != npoints or \
+            len(self.y_inter_rect) != npoints:
+            raise ValueError('Unexpected different number of points')
+
+        # correct coordinates from origin in order to manipulate
+        # coordinates corresponding to image indices
+        x_inter_orig_shifted = self.x_inter_orig - self.bb_nc1_orig
+        y_inter_orig_shifted = self.y_inter_orig - self.bb_ns1_orig
+        x_inter_rect_shifted = self.x_inter_rect - self.bb_nc1_orig
+        y_inter_rect_shifted = self.y_inter_rect - self.bb_ns1_orig
+
+        # normalize ranges dividing by the maximum, so the
+        # transformation fit will be computed with data points with
+        # coordinates in the range [0,1]
+        x_scale = 1.0 / np.concatenate((x_inter_orig_shifted,
+                                        x_inter_rect_shifted)).max()
+        y_scale = 1.0 / np.concatenate((y_inter_orig_shifted,
+                                        y_inter_rect_shifted)).max()
+        if abs(self.debugplot) >= 10:
+            print("x_scale:", x_scale)
+            print("y_scale:", y_scale)
+        x_inter_orig_scaled = x_inter_orig_shifted * x_scale
+        y_inter_orig_scaled = y_inter_orig_shifted * y_scale
+        x_inter_rect_scaled = x_inter_rect_shifted * x_scale
+        y_inter_rect_scaled = y_inter_rect_shifted * y_scale
+
+        if abs(self.debugplot) % 10 != 0:
+            ax = ximplotxy(x_inter_orig_scaled, y_inter_orig_scaled,
+                           show=False,
+                           **{'marker': 'o', 'color': 'cyan',
+                              'label': 'original', 'linestyle': ''})
+            dum = zip(x_inter_orig_scaled, y_inter_orig_scaled)
+            for idum in range(len(dum)):
+                ax.text(dum[idum][0], dum[idum][1], str(idum+1), fontsize=10,
+                        horizontalalignment='center',
+                        verticalalignment='bottom', color='green')
+            ax.plot(x_inter_rect_scaled, y_inter_rect_scaled, 'bo',
+                    label="rectified")
+            dum = zip(x_inter_rect_scaled, y_inter_rect_scaled)
+            for idum in range(len(dum)):
+                ax.text(dum[idum][0], dum[idum][1], str(idum+1), fontsize=10,
+                        horizontalalignment='center',
+                        verticalalignment='bottom', color='blue')
+            xmin = np.concatenate((x_inter_orig_scaled,
+                                   x_inter_rect_scaled)).min()
+            xmax = np.concatenate((x_inter_orig_scaled,
+                                   x_inter_rect_scaled)).max()
+            ymin = np.concatenate((y_inter_orig_scaled,
+                                   y_inter_rect_scaled)).min()
+            ymax = np.concatenate((y_inter_orig_scaled,
+                                   y_inter_rect_scaled)).max()
+            dx = xmax - xmin
+            xmin -= dx/20
+            xmax += dx/20
+            dy = ymax - ymin
+            ymin -= dy/20
+            ymax += dy/20
+            ax.set_xlim([xmin, xmax])
+            ax.set_ylim([ymin, ymax])
+            ax.set_xlabel("pixel (normalized coordinate)")
+            ax.set_ylabel("pixel (normalized coordinate)")
+            ax.set_title("(estimate_tt_to_rectify #1)\n\n")
+            # shrink current axis and put a legend
+            box = ax.get_position()
+            ax.set_position([box.x0, box.y0, box.width, box.height * 0.92])
+            ax.legend(loc=3, bbox_to_anchor=(0., 1.02, 1., 0.07),
+                      mode="expand", borderaxespad=0., ncol=4,
+                      numpoints=1)
+            pause_debugplot(self.debugplot, pltshow=True)
+
+        # In order to avoid the need of solving a large system of
+        # equations (as shown in the previous commented-out code), next
+        # we prefer to solve 2 systems of equations with half number
+        # of unknowns each.
+        if order == 1:
+            A = np.vstack([np.ones(npoints),
+                           x_inter_rect_scaled,
+                           y_inter_rect_scaled]).T
+        elif order == 2:
+            A = np.vstack([np.ones(npoints),
+                           x_inter_rect_scaled,
+                           y_inter_rect_scaled,
+                           x_inter_rect_scaled ** 2,
+                           x_inter_rect_scaled * y_inter_orig_scaled,
+                           y_inter_rect_scaled ** 2]).T
+        elif order == 3:
+            A = np.vstack([np.ones(npoints),
+                           x_inter_rect_scaled,
+                           y_inter_rect_scaled,
+                           x_inter_rect_scaled ** 2,
+                           x_inter_rect_scaled * y_inter_orig_scaled,
+                           y_inter_rect_scaled ** 2,
+                           x_inter_rect_scaled ** 3,
+                           x_inter_rect_scaled ** 2 * y_inter_rect_scaled,
+                           x_inter_rect_scaled * y_inter_rect_scaled ** 2,
+                           y_inter_rect_scaled ** 3]).T
+        elif order == 4:
+            A = np.vstack([np.ones(npoints),
+                           x_inter_rect_scaled,
+                           y_inter_rect_scaled,
+                           x_inter_rect_scaled ** 2,
+                           x_inter_rect_scaled * y_inter_orig_scaled,
+                           y_inter_rect_scaled ** 2,
+                           x_inter_rect_scaled ** 3,
+                           x_inter_rect_scaled ** 2 * y_inter_rect_scaled,
+                           x_inter_rect_scaled * y_inter_rect_scaled ** 2,
+                           y_inter_rect_scaled ** 3,
+                           x_inter_rect_scaled ** 4,
+                           x_inter_rect_scaled ** 3 * y_inter_rect_scaled ** 1,
+                           x_inter_rect_scaled ** 2 * y_inter_rect_scaled ** 2,
+                           x_inter_rect_scaled ** 1 * y_inter_rect_scaled ** 3,
+                           y_inter_rect_scaled ** 4]).T
+        else:
+            raise ValueError("Invalid order=" + str(order))
+        self.ttd = transform.PolynomialTransform(
+            np.vstack(
+                [np.linalg.lstsq(A, x_inter_orig_scaled)[0],
+                 np.linalg.lstsq(A, y_inter_orig_scaled)[0]]
+            )
+        )
+
+        # reverse normalization to recover coefficients of the
+        # transformation in the correct system
+        factor = np.zeros_like(self.ttd.params[0])
+        k = 0
+        for i in range(order + 1):
+            for j in range(i + 1):
+                factor[k] = (x_scale**(i-j)) * (y_scale**j)
+                k += 1
+        self.ttd.params[0] *= factor/x_scale
+        self.ttd.params[1] *= factor/y_scale
+        if self.debugplot >= 10:
+            print("ttd.params X:\n", self.ttd.params[0])
+            print("ttd.params Y:\n", self.ttd.params[1])
+
+        # display slitlet with intersection points and grid indicating
+        # the fitted transformation
+        if abs(self.debugplot % 10) != 0 and slitlet2d is not None:
+            # display image with zscale cuts
+            title = "Slitlet#" + str(self.islitlet) + \
+                    " (estimate_tt_to_rectify)"
+            ax = ximshow(slitlet2d, title=title,
+                         first_pixel=(self.bb_nc1_orig, self.bb_ns1_orig),
+                         show=False)
+            # intersection points
+            ax.plot(self.x_inter_orig, self.y_inter_orig, 'co')
+            # grid with fitted transformation: horizontal boundaries
+            xx = np.arange(0, self.bb_nc2_orig - self.bb_nc1_orig + 1,
+                           dtype=np.float)
+            for spectrail in self.list_spectrails:
+                yy0 = spectrail.y_rectified
+                yy = np.tile([yy0 - self.bb_ns1_orig], xx.size)
+                ax.plot(xx + self.bb_nc1_orig, yy + self.bb_ns1_orig, "b")
+                xxx = np.zeros_like(xx)
+                yyy = np.zeros_like(yy)
+                k = 0
+                for i in range(order + 1):
+                    for j in range(i + 1):
+                        xxx += self.ttd.params[0][k] * \
+                               (xx ** (i - j)) * (yy ** j)
+                        yyy += self.ttd.params[1][k] * \
+                               (xx ** (i - j)) * (yy ** j)
+                        k += 1
+                ax.plot(xxx + self.bb_nc1_orig, yyy + self.bb_ns1_orig, "g")
+            # grid with fitted transformation: arc lines
+            ylower_line = \
+                self.list_spectrails[self.i_lower_spectrail].y_rectified
+            yupper_line = \
+                self.list_spectrails[self.i_upper_spectrail].y_rectified
+            n_points = int(yupper_line - ylower_line + 0.5) + 1
+            yy = np.linspace(ylower_line - self.bb_ns1_orig,
+                             yupper_line - self.bb_ns1_orig,
+                             num=n_points,
+                             dtype=np.float)
+            for arc_line in self.list_arc_lines:
+                xline = arc_line.x_rectified - self.bb_nc1_orig
+                xx = np.array([xline] * n_points)
+                ax.plot(xx + self.bb_nc1_orig, yy + self.bb_ns1_orig, "b")
+                xxx = np.zeros_like(xx)
+                yyy = np.zeros_like(yy)
+                k = 0
+                for i in range(order + 1):
+                    for j in range(i + 1):
+                        xxx += self.ttd.params[0][k] * \
+                               (xx ** (i - j)) * (yy ** j)
+                        yyy += self.ttd.params[1][k] * \
+                               (xx ** (i - j)) * (yy ** j)
+                        k += 1
+                ax.plot(xxx + self.bb_nc1_orig,
+                        yyy + self.bb_ns1_orig, "c")
             # show plot
             pause_debugplot(self.debugplot, pltshow=True)
 
@@ -641,8 +882,13 @@ def main(args=None):
         slt.locate_unknown_arc_lines(slitlet2d=slitlet2d)
 
         # compute intersections between spectrum trails and arc lines
-        slt.debugplot = 12
         slt.xy_spectrail_arc_intersections(slitlet2d=slitlet2d)
+
+        # compute rectification transformation
+        slt.debugplot = 12
+        slt.estimate_tt_to_rectify(order=2, slitlet2d=slitlet2d)
+
+        # rectify image
         #...
         #...
         #
@@ -659,9 +905,11 @@ def main(args=None):
         ax=ximshow_file(args.fitsfile.name, show=False)
         for slt in list_islitlets:
             xdum = np.linspace(1, NAXIS1_EMIR, num=NAXIS1_EMIR)
-            ylower = slt.list_spectrails[0].poly_funct(xdum)
+            ylower = \
+                slt.list_spectrails[slt.i_lower_spectrail].poly_funct(xdum)
             ax.plot(xdum, ylower, 'b-')
-            yupper = slt.list_spectrails[2].poly_funct(xdum)
+            yupper = \
+                slt.list_spectrails[slt.i_upper_spectrail].poly_funct(xdum)
             ax.plot(xdum, yupper, 'b-')
             if slt.list_arc_lines is not None:
                 for arcline in slt.list_arc_lines:

@@ -1810,6 +1810,7 @@ class EmirSlitlet:
         orig_points = np.array(zip(x_inter_orig_scaled, y_inter_orig_scaled))
         rect_points = np.array(zip(x_inter_rect_scaled, y_inter_rect_scaled))
 
+        """
         # TODO: is this really necessary?
         # use only a fraction of the data points (this step was
         # necessary when computing the transformation without
@@ -1822,7 +1823,6 @@ class EmirSlitlet:
             rect_points = rect_points[1:len(rect_points):n_step_remove]
 
         # estimate the transformation
-        """
         self.ttd = transform.PolynomialTransform()
         ok_estimate = self.ttd.estimate(rect_points, orig_points, order=order)
         if not ok_estimate:
