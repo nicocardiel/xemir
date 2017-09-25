@@ -56,7 +56,6 @@ class Slitlet2D(object):
         Debugging level for messages and plots. For details see
         'numina.array.display.pause_debugplot.py'.
 
-
     Attributes
     ==========
     islitlet : int
@@ -542,7 +541,6 @@ class Slitlet2D(object):
             # show plot
             pause_debugplot(self.debugplot, pltshow=True)
 
-
     def xy_spectrail_arc_intersections(self, slitlet2d=None):
         """Compute intersection points of spectrum trails with arc lines.
 
@@ -581,6 +579,7 @@ class Slitlet2D(object):
             xroot, yroot = intersection_spectrail_arcline(
                 spectrail=spectrail, arcline=arcline
             )
+            arcline.x_rectified = xroot
             self.x_inter_rect = np.append(
                 self.x_inter_rect, [xroot] * number_spectrum_trails
             )
@@ -595,7 +594,6 @@ class Slitlet2D(object):
                 xroot, yroot = intersection_spectrail_arcline(
                     spectrail=spectrail, arcline=arcline
                 )
-                arcline.x_rectified = xroot
                 self.x_inter_orig = np.append(self.x_inter_orig, xroot)
                 self.y_inter_orig = np.append(self.y_inter_orig, yroot)
 
@@ -628,7 +626,7 @@ class Slitlet2D(object):
 
         Parameters
         ----------
-        order = int
+        order : int
             Order of the polynomial transformation.
         slitlet2d : 2d numpy array
             Slitlet image to be displayed with the computed boundaries
@@ -789,7 +787,8 @@ class Slitlet2D(object):
                          show=False)
             # intersection points
             ax.plot(self.x_inter_orig, self.y_inter_orig, 'co')
-            # grid with fitted transformation: horizontal boundaries
+            ax.plot(self.x_inter_rect, self.y_inter_rect, 'bo')
+            # grid with fitted transformation: spectrum trails
             xx = np.arange(0, self.bb_nc2_orig - self.bb_nc1_orig + 1,
                            dtype=np.float)
             for spectrail in self.list_spectrails:
@@ -851,10 +850,8 @@ def fmap(order, aij, bij, x, y):
     k = 0
     for i in range(order + 1):
         for j in range(i + 1):
-            u += aij[k] * \
-                 (x ** (i - j)) * (y ** j)
-            v += bij[k] * \
-                 (x ** (i - j)) * (y ** j)
+            u += aij[k] * (x ** (i - j)) * (y ** j)
+            v += bij[k] * (x ** (i - j)) * (y ** j)
             k += 1
 
     return u, v
@@ -934,6 +931,7 @@ def main(args=None):
 
         # rectify image
         #...
+        # see line 72 in first_look_arc_emir.py
         #...
         #
         if args.debugplot == 0:
