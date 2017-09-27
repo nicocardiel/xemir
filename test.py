@@ -17,6 +17,8 @@ from numina.array.display.ximplotxy import ximplotxy
 from numina.array.display.ximshow import ximshow
 from numina.array.display.ximshow import ximshow_file
 from numina.array.display.pause_debugplot import pause_debugplot
+from numina.array.wavecalib.peaks_spectrum import find_peaks_spectrum
+from numina.array.wavecalib.peaks_spectrum import refine_peaks_spectrum
 
 from csu_configuration import CsuConfiguration
 from dtu_configuration import DtuConfiguration
@@ -914,6 +916,87 @@ class Slitlet2D(object):
 
         return slitlet2d_rect
 
+    def median_spectrum_from_rectified_image(self, slitlet2d_rect,
+                                             nwinwidth_initial,
+                                             nwinwidth_refined):
+        """Median spectrum and line peaks from rectified image.
+
+        In order to avoid the line ghosts, the line peaks are identified
+        independently in the upper and lower halves of the rectified
+        image. The final peaks correspond to lines that appear in both
+        spectra.
+
+        Parameters
+        ----------
+        slitlet2d_rect : 2d numpy array
+            Rectified slitlet image.
+        nwinwidth_initial : int
+            Width of the window where each peak must be found using
+            the initial method (approximate)
+        nwinwidth_refined : int
+            Width of the window where each peak location will be
+            refined.
+
+        Returns
+        -------
+        TBD
+
+        """
+
+        # protections
+        naxis2, naxis1 = slitlet2d_rect.shape
+        if naxis1 != self.bb_nc2_orig - self.bb_nc1_orig + 1:
+            raise ValueError("Unexpected slitlet2d_rect naxis1")
+        if naxis2 != self.bb_ns2_orig - self.bb_ns1_orig + 1:
+            raise ValueError("Unexpected slitlet2d_rect naxis2")
+
+        # lower, middle and upper spectrum trails
+        ylower_line = \
+            self.list_spectrails[self.i_lower_spectrail].y_rectified
+        ymiddle_line = \
+            self.list_spectrails[self.i_middle_spectrail].y_rectified
+        yupper_line = \
+            self.list_spectrails[self.i_upper_spectrail].y_rectified
+
+        ilower = int(ylower_line + 0.5) - self.bb_ns1_orig
+        imiddle = int(ymiddle_line + 0.5) - self.bb_ns1_orig
+        iupper = int(yupper_line + 0.5) - self.bb_ns1_orig
+
+        # median spectra using different image regions
+        sp0 = np.median(slitlet2d_rect[ilower:(iupper + 1), :], axis=0)
+        sp1 = np.median(slitlet2d_rect[ilower:(imiddle + 1), :], axis=0)
+        sp2 = np.median(slitlet2d_rect[imiddle:(iupper + 1), :], axis=0)
+
+        # initial location of the peaks (integer values)
+        ixpeaks = find_peaks_spectrum(sp0, nwinwidth=nwinwidth_initial,
+                                      debugplot=self.debugplot)
+
+        #ToDo:
+        # - search for peaks in sp1 and sp2
+        # - remove ghosts
+        # - refine then the location of the peaks
+
+        # refined location of the peaks (float values)
+        fxpeaks, sxpeaks = refine_peaks_spectrum(sp0, ixpeaks,
+                                                 nwinwidth=nwinwidth_refined,
+                                                 method="gaussian")
+
+        if self.debugplot % 10 != 0:
+            x = np.arange(self.bb_nc1_orig, self.bb_nc2_orig + 1)
+            title = "Slitlet#" + str(self.islitlet) + " (median spectrum)"
+            ax = ximplotxy(x, sp1, show=False, title=title,
+                           xlabel='pixel coordinate (from 1 to NAXIS1)',
+                           ylabel='number of counts',
+                           **{'marker': ' ', 'label': 'lower region'})
+            ax.plot(x, sp2, label='upper region')
+            ax.plot(x, sp0, label='whole region')
+            # mark peak location
+            ax.plot(ixpeaks + self.bb_nc1_orig,
+                    sp0[ixpeaks], 'o', label="initial location")
+            ax.plot(fxpeaks + self.bb_nc1_orig,
+                    sp0[ixpeaks], 'o', label="refined location")
+            ax.legend()
+            pause_debugplot(self.debugplot, pltshow=True, tight_layout=False)
 
 def fmap(order, aij, bij, x, y):
     """Evaluate the 2D polynomial transformation.
@@ -1028,11 +1111,19 @@ def main(args=None):
         pause_debugplot(12, optional_prompt="Stop here!")
 
         # rectify image
+        slitlet2d_rect = slt.rectify(slitlet2d, resampling=1)
+
+        # median spectrum and line peaks from rectified image
+        slt.median_spectrum_from_rectified_image(
+            slitlet2d_rect,
+            nwinwidth_initial=7,
+            nwinwidth_refined=5
+        )
         #...
-        # see line 72 in first_look_arc_emir.py
-        slt.rectify(slitlet2d, resampling=1)
+        # see line 74 in first_look_arc_emir.py
         #...
         #
+
         if args.debugplot == 0:
             sys.stdout.write('.')
             if islitlet == islitlet_max:
