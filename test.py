@@ -38,7 +38,7 @@ class Slitlet2D(object):
     """Slitlet2D class definition.
 
     Parameters
-    ==========
+    ----------
     islitlet : int
         Slitlet number.
     params : :class:`~lmfit.parameter.Parameters`
@@ -57,7 +57,7 @@ class Slitlet2D(object):
         'numina.array.display.pause_debugplot.py'.
 
     Attributes
-    ==========
+    ----------
     islitlet : int
         Slitlet number.
     csu_bar_left : float
@@ -103,6 +103,9 @@ class Slitlet2D(object):
     y_inter_rect : 1d numpy array, float
         Y coordinates of the intersection points of arc lines with
         spectrum trails in the rectified image.
+    ttd_order : int
+        Polynomial order corresponding to the rectification
+        transformation.
     ttd_aij : numpy array
         Polynomial coefficents corresponding to the rectification
         transformation coefficients a_ij.
@@ -162,6 +165,7 @@ class Slitlet2D(object):
         self.y_inter_orig = None
         self.x_inter_rect = None
         self.y_inter_rect = None
+        self.ttd_order = None
         self.ttd_aij = None
         self.ttd_bij = None
 
@@ -225,6 +229,7 @@ class Slitlet2D(object):
                           str(dumval[0]) + ", ..., " + \
                           str(dumval[-1]) + "]\n"
         output += \
+            "- ttd_order..........:\n\t" + str(self.ttd_order) + "\n" + \
             "- ttd_aij............:\n\t" + str(self.ttd_aij) + "\n" + \
             "- ttd_bij............:\n\t" + str(self.ttd_bij) + "\n" + \
             "- debugplot...................: " + \
@@ -770,6 +775,7 @@ class Slitlet2D(object):
             for j in range(i + 1):
                 factor[k] = (x_scale**(i-j)) * (y_scale**j)
                 k += 1
+        self.ttd_order = order
         self.ttd_aij = ttd.params[0] * factor/x_scale
         self.ttd_bij = ttd.params[1] * factor/y_scale
         if self.debugplot >= 10:
@@ -795,7 +801,8 @@ class Slitlet2D(object):
                 yy0 = spectrail.y_rectified
                 yy = np.tile([yy0 - self.bb_ns1_orig], xx.size)
                 ax.plot(xx + self.bb_nc1_orig, yy + self.bb_ns1_orig, "b")
-                xxx, yyy = fmap(order, self.ttd_aij, self.ttd_bij, xx, yy)
+                xxx, yyy = fmap(self.ttd_order, self.ttd_aij, self.ttd_bij,
+                                xx, yy)
                 ax.plot(xxx + self.bb_nc1_orig, yyy + self.bb_ns1_orig, "g")
             # grid with fitted transformation: arc lines
             ylower_line = \
@@ -811,17 +818,108 @@ class Slitlet2D(object):
                 xline = arc_line.x_rectified - self.bb_nc1_orig
                 xx = np.array([xline] * n_points)
                 ax.plot(xx + self.bb_nc1_orig, yy + self.bb_ns1_orig, "b")
-                xxx, yyy = fmap(order, self.ttd_aij, self.ttd_bij, xx, yy)
+                xxx, yyy = fmap(self.ttd_order, self.ttd_aij, self.ttd_bij,
+                                xx, yy)
                 ax.plot(xxx + self.bb_nc1_orig, yyy + self.bb_ns1_orig, "c")
             # show plot
             pause_debugplot(self.debugplot, pltshow=True)
+
+    def rectify(self, slitlet2d, resampling):
+        """Rectify slitlet using computed transformation.
+
+        Parameters
+        ----------
+        slitlet2d : 2d numpy array, float
+            Image containing the 2d slitlet image.
+        resampling : int
+            1: nearest neighbour, 2: flux preserving interpolation.
+
+        Returns
+        -------
+        slitlet2d_rect : 2d numpy array
+            Rectified slitlet image.
+
+        """
+
+        if resampling not in [1, 2]:
+            raise ValueError("Unexpected resampling value=" + str(resampling))
+
+        # initialize output array
+        slitlet2d_rect = np.zeros_like(slitlet2d)
+        naxis2, naxis1 = slitlet2d_rect.shape
+        if naxis1 != self.bb_nc2_orig - self.bb_nc1_orig + 1:
+            raise ValueError("Unexpected slitlet2d_rect naxis1")
+        if naxis2 != self.bb_ns2_orig - self.bb_ns1_orig + 1:
+            raise ValueError("Unexpected slitlet2d_rect naxis2")
+
+        if resampling == 1:
+            # pixel coordinates (rectified image); since the fmap function
+            # below requires floats, these arrays must use dtype=np.float
+            j = np.arange(0, naxis1, dtype=np.float)
+            i = np.arange(0, naxis2, dtype=np.float)
+            # the cartesian product of the previous 1d arrays could be stored
+            # as np.transpose([xx,yy]), where xx and yy are computed as follows
+            xx = np.tile(j, (len(i),))
+            yy = np.repeat(i, len(j))
+            # compute pixel coordinates in original (distorted) image
+            xxx, yyy = fmap(self.ttd_order, self.ttd_aij, self.ttd_bij, xx, yy)
+            # round to nearest integer and cast to integer; note that the
+            # rounding still provides a float, so the casting is required
+            ixxx = np.rint(xxx).astype(np.int)
+            iyyy = np.rint(yyy).astype(np.int)
+            # determine pixel coordinates within available image
+            lxxx = np.logical_and(ixxx >= 0, ixxx < naxis1)
+            lyyy = np.logical_and(iyyy >= 0, iyyy < naxis2)
+            lok = np.logical_and(lxxx, lyyy)
+            # assign pixel values to rectified image
+            ixx = xx.astype(np.int)[lok]
+            iyy = yy.astype(np.int)[lok]
+            ixxx = ixxx[lok]
+            iyyy = iyyy[lok]
+            slitlet2d_rect[iyy, ixx] = slitlet2d[iyyy, ixxx]
+        else:
+            raise ValueError("Sorry, this resampling method has not been"
+                             " implemented yet!")
+
+        if abs(self.debugplot % 10) != 0:
+            title = "Slitlet#" + str(self.islitlet) + " (rectify)"
+            ax = ximshow(slitlet2d_rect, title=title,
+                         first_pixel=(self.bb_nc1_orig, self.bb_ns1_orig),
+                         show=False)
+            # intersection points
+            ax.plot(self.x_inter_rect, self.y_inter_rect, 'bo')
+            # grid with fitted transformation: spectrum trails
+            xx = np.arange(0, self.bb_nc2_orig - self.bb_nc1_orig + 1,
+                           dtype=np.float)
+            for spectrail in self.list_spectrails:
+                yy0 = spectrail.y_rectified
+                yy = np.tile([yy0 - self.bb_ns1_orig], xx.size)
+                ax.plot(xx + self.bb_nc1_orig, yy + self.bb_ns1_orig, "b")
+            # grid with fitted transformation: arc lines
+            ylower_line = \
+                self.list_spectrails[self.i_lower_spectrail].y_rectified
+            yupper_line = \
+                self.list_spectrails[self.i_upper_spectrail].y_rectified
+            n_points = int(yupper_line - ylower_line + 0.5) + 1
+            yy = np.linspace(ylower_line - self.bb_ns1_orig,
+                             yupper_line - self.bb_ns1_orig,
+                             num=n_points,
+                             dtype=np.float)
+            for arc_line in self.list_arc_lines:
+                xline = arc_line.x_rectified - self.bb_nc1_orig
+                xx = np.array([xline] * n_points)
+                ax.plot(xx + self.bb_nc1_orig, yy + self.bb_ns1_orig, "b")
+            # show plot
+            pause_debugplot(self.debugplot, pltshow=True)
+
+        return slitlet2d_rect
 
 
 def fmap(order, aij, bij, x, y):
     """Evaluate the 2D polynomial transformation.
 
     Parameters
-    ==========
+    ----------
     order : int
         Order of the polynomial transformation.
     aij : numpy array
@@ -836,7 +934,7 @@ def fmap(order, aij, bij, x, y):
         that these values correspond to array indices.
 
     Returns
-    =======
+    -------
     u : numpy array or float
         U coordinate values.
     v : numpy array or float
@@ -906,7 +1004,7 @@ def main(args=None):
     islitlet_max = fitted_bound_param['tags']['islitlet_max']
     list_islitlets = []
 
-    for islitlet in range(islitlet_min, islitlet_max + 1):
+    for islitlet in [2,28,54]: #range(islitlet_min, islitlet_max + 1):
 
         # define Slitlet2D object
         slt = Slitlet2D(islitlet=islitlet,
@@ -932,6 +1030,7 @@ def main(args=None):
         # rectify image
         #...
         # see line 72 in first_look_arc_emir.py
+        slt.rectify(slitlet2d, resampling=1)
         #...
         #
         if args.debugplot == 0:
