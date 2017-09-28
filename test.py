@@ -3,10 +3,12 @@ from __future__ import print_function
 
 import argparse
 from astropy.io import fits
+from functools import reduce
 import json
 from matplotlib.patches import Rectangle
 import numpy as np
 from scipy import ndimage
+from scipy.signal import medfilt
 from skimage import restoration
 from skimage import transform
 import sys
@@ -283,7 +285,7 @@ class Slitlet2D(object):
         return slitlet2d
 
     def locate_unknown_arc_lines(self, slitlet2d,
-                                 times_sigma_threshold=4,
+                                 times_sigma_threshold=15,
                                  minimum_threshold=None,
                                  delta_x_max=30,
                                  delta_y_min=30,
@@ -918,7 +920,9 @@ class Slitlet2D(object):
 
     def median_spectrum_from_rectified_image(self, slitlet2d_rect,
                                              nwinwidth_initial,
-                                             nwinwidth_refined):
+                                             nwinwidth_refined,
+                                             times_sigma_threshold,
+                                             minimum_threshold=None):
         """Median spectrum and line peaks from rectified image.
 
         In order to avoid the line ghosts, the line peaks are identified
@@ -936,6 +940,11 @@ class Slitlet2D(object):
         nwinwidth_refined : int
             Width of the window where each peak location will be
             refined.
+        times_sigma_threshold : float
+            Times (robust) sigma above the median of the image to set
+            the minimum threshold when searching for line peaks.
+        minimum threshold : float or None
+            Minimum value of the threshold.
 
         Returns
         -------
@@ -967,9 +976,44 @@ class Slitlet2D(object):
         sp1 = np.median(slitlet2d_rect[ilower:(imiddle + 1), :], axis=0)
         sp2 = np.median(slitlet2d_rect[imiddle:(iupper + 1), :], axis=0)
 
+        # compute threshold
+        q25, q50, q75 = np.percentile(sp0, q=[25.0, 50.0, 75.0])
+        sigma_g = 0.7413 * (q75 - q25)  # robust standard deviation
+        threshold = q50 + times_sigma_threshold * sigma_g
+        if self.debugplot >= 10:
+            print("median...........:", q50)
+            print("robuts std.......:", sigma_g)
+            print("threshold........:", threshold)
+        if minimum_threshold > threshold:
+            threshold = minimum_threshold
+            if self.debugplot >= 10:
+                print("minimum threshold:", minimum_threshold)
+                print("final threshold..:", threshold)
+
         # initial location of the peaks (integer values)
-        ixpeaks = find_peaks_spectrum(sp0, nwinwidth=nwinwidth_initial,
-                                      debugplot=self.debugplot)
+        ixpeaks0 = find_peaks_spectrum(sp0, nwinwidth=nwinwidth_initial,
+                                       threshold=threshold,
+                                       debugplot=self.debugplot)
+
+        # peaks in the lower and upper regions
+        ixpeaks1 = find_peaks_spectrum(sp1, nwinwidth=nwinwidth_initial,
+                                       threshold=threshold,
+                                       debugplot=self.debugplot)
+        ixpeaks2 = find_peaks_spectrum(sp2, nwinwidth=nwinwidth_initial,
+                                       threshold=threshold,
+                                       debugplot=self.debugplot)
+
+        # the peaks are valid if the are also found in the lower and
+        # upper regions (with a tolerance of +1 or -1 pixel)
+        ixpeaks = []
+        for ixpeak in ixpeaks0:
+            l1 = ixpeak in np.concatenate((ixpeaks1, ixpeaks1+1, ixpeaks1-1))
+            l2 = ixpeak in np.concatenate((ixpeaks2, ixpeaks2+1, ixpeaks2-1))
+            if l1 and l2:
+                ixpeaks.append(ixpeak)
+        ixpeaks = np.array(ixpeaks)
+        #ixpeaks = reduce(np.intersect1d, (ixpeaks0, ixpeaks1, ixpeaks2))
+        print(ixpeaks)
 
         #ToDo:
         # - search for peaks in sp1 and sp2
@@ -1098,6 +1142,16 @@ def main(args=None):
         # extract 2D image corresponding to the selected slitlet
         slitlet2d = slt.extract_slitlet2d(image2d)
 
+        # subtract smooth background computed as follows:
+        # - median collapsed spectrum of the whole slitlet2d
+        # - independent median filtering of the previous spectrum in the
+        #   two halves in the spectral direction
+        spmedian = np.median(slitlet2d, axis=0)
+        sp1 = medfilt(spmedian[:int(NAXIS1_EMIR/2)], 201)
+        sp2 = medfilt(spmedian[int(NAXIS1_EMIR/2):], 201)
+        spbackground = np.concatenate((sp1, sp2))
+        slitlet2d -= spbackground
+
         # locate unknown arc lines
         slt.locate_unknown_arc_lines(slitlet2d=slitlet2d)
 
@@ -1117,7 +1171,8 @@ def main(args=None):
         slt.median_spectrum_from_rectified_image(
             slitlet2d_rect,
             nwinwidth_initial=7,
-            nwinwidth_refined=5
+            nwinwidth_refined=5,
+            times_sigma_threshold=5
         )
         #...
         # see line 74 in first_look_arc_emir.py
