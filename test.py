@@ -922,7 +922,8 @@ class Slitlet2D(object):
                                              nwinwidth_initial,
                                              nwinwidth_refined,
                                              times_sigma_threshold,
-                                             minimum_threshold=None):
+                                             minimum_threshold=None,
+                                             npix_avoid_border=0):
         """Median spectrum and line peaks from rectified image.
 
         In order to avoid the line ghosts, the line peaks are identified
@@ -945,6 +946,10 @@ class Slitlet2D(object):
             the minimum threshold when searching for line peaks.
         minimum threshold : float or None
             Minimum value of the threshold.
+        npix_avoid_border : int
+            Number of pixels at the borders of the spectrum where peaks
+            are not considered. If zero, the actual number will be
+            given by nwinwidth_initial.
 
         Returns
         -------
@@ -1013,12 +1018,14 @@ class Slitlet2D(object):
                 ixpeaks.append(ixpeak)
         ixpeaks = np.array(ixpeaks)
         #ixpeaks = reduce(np.intersect1d, (ixpeaks0, ixpeaks1, ixpeaks2))
-        print(ixpeaks)
+        if self.debugplot % 10 != 0:
+            print("Merged initial list of peaks:\n", ixpeaks)
 
-        #ToDo:
-        # - search for peaks in sp1 and sp2
-        # - remove ghosts
-        # - refine then the location of the peaks
+        # remove peaks too close to any of the borders of the spectrum
+        if npix_avoid_border > 0:
+            lok_ini = ixpeaks >= npix_avoid_border
+            lok_end = ixpeaks <= len(sp0) - 1 - npix_avoid_border
+            ixpeaks = ixpeaks[lok_ini * lok_end]
 
         # refined location of the peaks (float values)
         fxpeaks, sxpeaks = refine_peaks_spectrum(sp0, ixpeaks,
@@ -1170,9 +1177,10 @@ def main(args=None):
         # median spectrum and line peaks from rectified image
         slt.median_spectrum_from_rectified_image(
             slitlet2d_rect,
-            nwinwidth_initial=7,
+            nwinwidth_initial=5,
             nwinwidth_refined=5,
-            times_sigma_threshold=5
+            times_sigma_threshold=5,
+            npix_avoid_border=6
         )
         #...
         # see line 74 in first_look_arc_emir.py
