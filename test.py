@@ -3,7 +3,6 @@ from __future__ import print_function
 
 import argparse
 from astropy.io import fits
-from functools import reduce
 import json
 from matplotlib.patches import Rectangle
 import numpy as np
@@ -19,6 +18,8 @@ from numina.array.display.ximplotxy import ximplotxy
 from numina.array.display.ximshow import ximshow
 from numina.array.display.ximshow import ximshow_file
 from numina.array.display.pause_debugplot import pause_debugplot
+from numina.array.wavecalib.__main__ import read_wv_master_file
+from numina.array.wavecalib.__main__ import wvcal_spectrum
 from numina.array.wavecalib.peaks_spectrum import find_peaks_spectrum
 from numina.array.wavecalib.peaks_spectrum import refine_peaks_spectrum
 
@@ -923,7 +924,8 @@ class Slitlet2D(object):
                                              nwinwidth_refined,
                                              times_sigma_threshold,
                                              minimum_threshold=None,
-                                             npix_avoid_border=0):
+                                             npix_avoid_border=0,
+                                             nbrightlines=[0]):
         """Median spectrum and line peaks from rectified image.
 
         In order to avoid the line ghosts, the line peaks are identified
@@ -944,16 +946,23 @@ class Slitlet2D(object):
         times_sigma_threshold : float
             Times (robust) sigma above the median of the image to set
             the minimum threshold when searching for line peaks.
-        minimum threshold : float or None
+        minimum_threshold : float or None
             Minimum value of the threshold.
         npix_avoid_border : int
             Number of pixels at the borders of the spectrum where peaks
             are not considered. If zero, the actual number will be
             given by nwinwidth_initial.
+        nbrightlines : int or list of integers
+            Maximum number of brightest lines to be employed in the
+            wavelength calibration. If this value is 0, all the detected
+            lines will be employed.
 
         Returns
         -------
-        TBD
+        sp0 : 1d numpy array
+            Median spectrum.
+        fxpeaks : 1d numpy array
+            Refined location of arc lines (in array index scale).
 
         """
 
@@ -985,15 +994,15 @@ class Slitlet2D(object):
         q25, q50, q75 = np.percentile(sp0, q=[25.0, 50.0, 75.0])
         sigma_g = 0.7413 * (q75 - q25)  # robust standard deviation
         threshold = q50 + times_sigma_threshold * sigma_g
-        if self.debugplot >= 10:
+        if abs(self.debugplot) >= 10:
             print("median...........:", q50)
             print("robuts std.......:", sigma_g)
             print("threshold........:", threshold)
         if minimum_threshold > threshold:
             threshold = minimum_threshold
-            if self.debugplot >= 10:
-                print("minimum threshold:", minimum_threshold)
-                print("final threshold..:", threshold)
+        if abs(self.debugplot) >= 10:
+            print("minimum threshold:", minimum_threshold)
+            print("final threshold..:", threshold)
 
         # initial location of the peaks (integer values)
         ixpeaks0 = find_peaks_spectrum(sp0, nwinwidth=nwinwidth_initial,
@@ -1017,8 +1026,7 @@ class Slitlet2D(object):
             if l1 and l2:
                 ixpeaks.append(ixpeak)
         ixpeaks = np.array(ixpeaks)
-        #ixpeaks = reduce(np.intersect1d, (ixpeaks0, ixpeaks1, ixpeaks2))
-        if self.debugplot % 10 != 0:
+        if abs(self.debugplot) >= 10:
             print("Merged initial list of peaks:\n", ixpeaks)
 
         # remove peaks too close to any of the borders of the spectrum
@@ -1027,12 +1035,43 @@ class Slitlet2D(object):
             lok_end = ixpeaks <= len(sp0) - 1 - npix_avoid_border
             ixpeaks = ixpeaks[lok_ini * lok_end]
 
+        # select a maximum number of brightest lines in each region
+        if len(nbrightlines) == 1 and nbrightlines[0] == 0:
+            pass
+        else:
+            if abs(self.debugplot) >= 10:
+                print('nbrightlines =', nbrightlines)
+                print('ixpeaks in whole spectrum:\n', ixpeaks)
+            region_size = (naxis1-1)/len(nbrightlines)
+            ixpeaks_filtered = np.array([], dtype=int)
+            for iregion, nlines_in_region in enumerate(nbrightlines):
+                if nlines_in_region > 0:
+                    imin = int(iregion * region_size)
+                    imax = int((iregion + 1) * region_size)
+                    if iregion > 0:
+                        imin += 1
+                    ixpeaks_region = \
+                        ixpeaks[np.logical_and(ixpeaks >= imin,
+                                               ixpeaks <= imax)]
+                    if len(ixpeaks_region) > 0:
+                        peak_fluxes = sp0[ixpeaks_region]
+                        spos = peak_fluxes.argsort()
+                        ixpeaks_tmp = ixpeaks_region[spos[-nlines_in_region:]]
+                        ixpeaks_tmp.sort()  # in-place sort
+                        if abs(self.debugplot) >= 10:
+                            print('ixpeaks in region........:\n', ixpeaks_tmp)
+                        ixpeaks_filtered = np.concatenate((ixpeaks_filtered,
+                                                           ixpeaks_tmp))
+            ixpeaks = ixpeaks_filtered
+            if abs(self.debugplot) >= 10:
+                print('ixpeaks filtered.........:\n', ixpeaks)
+
         # refined location of the peaks (float values)
         fxpeaks, sxpeaks = refine_peaks_spectrum(sp0, ixpeaks,
                                                  nwinwidth=nwinwidth_refined,
                                                  method="gaussian")
 
-        if self.debugplot % 10 != 0:
+        if abs(self.debugplot) % 10 != 0:
             x = np.arange(self.bb_nc1_orig, self.bb_nc2_orig + 1)
             title = "Slitlet#" + str(self.islitlet) + " (median spectrum)"
             ax = ximplotxy(x, sp1, show=False, title=title,
@@ -1048,6 +1087,10 @@ class Slitlet2D(object):
                     sp0[ixpeaks], 'o', label="refined location")
             ax.legend()
             pause_debugplot(self.debugplot, pltshow=True, tight_layout=False)
+
+        # return median spectrum and refined peak location
+        return sp0, fxpeaks
+
 
 def fmap(order, aij, bij, x, y):
     """Evaluate the 2D polynomial transformation.
@@ -1092,13 +1135,17 @@ def fmap(order, aij, bij, x, y):
 def main(args=None):
 
     # parse command-line options
-    parser = argparse.ArgumentParser(prog='display_slitlet_arrangement')
+    parser = argparse.ArgumentParser(prog='test')
+    # required arguments
     parser.add_argument("fitsfile",
                         help="FITS file",
                         type=argparse.FileType('r'))
-    parser.add_argument("fitted_bound_param",
+    parser.add_argument("--fitted_bound_param", required=True,
                         help="Input JSON with fitted boundary parameters",
                         type=argparse.FileType('r'))
+    parser.add_argument("--wv_master_file", required=True,
+                        help="TXT file containing wavelengths")
+    # optional arguments
     parser.add_argument("--debugplot",
                         help="Integer indicating plotting & debugging options"
                              " (default=12)",
@@ -1133,6 +1180,60 @@ def main(args=None):
     hdulist = fits.open(args.fitsfile)
     image2d = hdulist[0].data
     hdulist.close()
+
+    # determine parameters according to grism+filter combination
+    grism_name = fitted_bound_param['tags']['grism']
+    filter_name = fitted_bound_param['tags']['filter']
+    crpix1_enlarged = 1.0  # center of first pixel
+    if grism_name == "J" and filter_name == "J":
+        crval1_enlarged = 11000.000  # Angstroms
+        cdelt1_enlarged = 0.7575  # Angstroms/pixel
+        naxis1_enlarged = 4134  # pixels
+        nbrightlines = [18]
+    elif grism_name == "H" and filter_name == "H":
+        crval1_enlarged = 14000.000  # Angstroms
+        cdelt1_enlarged = 1.2000  # Angstroms/pixel
+        naxis1_enlarged = 4134  # pixels
+        nbrightlines = [0]
+    elif grism_name == "K" and filter_name == "Ksp":
+        crval1_enlarged = 19000.000  # Angstroms
+        cdelt1_enlarged = 1.7000  # Angstroms/pixel
+        naxis1_enlarged = 4134  # pixels
+        nbrightlines = [0]
+    elif grism_name == "LR" and filter_name == "YJ":
+        crval1_enlarged = None  # Angstroms
+        cdelt1_enlarged = None  # Angstroms/pixel
+        naxis1_enlarged = None  # pixels
+        nbrightlines = None
+    elif grism_name == "LR" and filter_name == "HK":
+        crval1_enlarged = None  # Angstroms
+        cdelt1_enlarged = None  # Angstroms/pixel
+        naxis1_enlarged = None  # pixels
+        nbrightlines = None
+    else:
+        raise ValueError("invalid grism_name and/or filter_name")
+    crmin1_enlarged = \
+        crval1_enlarged + \
+        (1.0 - crpix1_enlarged) * \
+        cdelt1_enlarged  # Angstroms
+    crmax1_enlarged = \
+        crval1_enlarged + \
+        (naxis1_enlarged - crpix1_enlarged) * \
+        cdelt1_enlarged  # Angstroms
+
+    # read master arc line wavelengths
+    wv_master_all = read_wv_master_file(
+        wv_master_file=args.wv_master_file,
+        debugplot=args.debugplot
+    )
+    # clip master arc lines to expected wavelength range
+    lok1 = crmin1_enlarged <= wv_master_all
+    lok2 = wv_master_all <= crmax1_enlarged
+    lok = lok1 * lok2
+    wv_master = wv_master_all[lok]
+    if abs(args.debugplot) >= 10:
+        print("clipped wv_master:\n", wv_master)
+    raw_input("Pause...")
 
     islitlet_min = fitted_bound_param['tags']['islitlet_min']
     islitlet_max = fitted_bound_param['tags']['islitlet_max']
@@ -1175,17 +1276,23 @@ def main(args=None):
         slitlet2d_rect = slt.rectify(slitlet2d, resampling=1)
 
         # median spectrum and line peaks from rectified image
-        slt.median_spectrum_from_rectified_image(
+        sp_median, fxpeaks = slt.median_spectrum_from_rectified_image(
             slitlet2d_rect,
             nwinwidth_initial=5,
             nwinwidth_refined=5,
             times_sigma_threshold=5,
-            npix_avoid_border=6
+            npix_avoid_border=6,
+            nbrightlines=nbrightlines
         )
-        #...
-        # see line 74 in first_look_arc_emir.py
-        #...
-        #
+
+        # perform wavelength calibration
+        solution_wv = wvcal_spectrum(
+            sp=sp_median,
+            fxpeaks=fxpeaks,
+            poly_degree_wfit=3,
+            wv_master=wv_master,
+            debugplot=slt.debugplot
+        )
 
         if args.debugplot == 0:
             sys.stdout.write('.')
