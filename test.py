@@ -1145,6 +1145,9 @@ def main(args=None):
                         type=argparse.FileType('r'))
     parser.add_argument("--wv_master_file", required=True,
                         help="TXT file containing wavelengths")
+    parser.add_argument("--poldeg", required=True,
+                        help="Polynomial degree",
+                        type=int)
     # optional arguments
     parser.add_argument("--debugplot",
                         help="Integer indicating plotting & debugging options"
@@ -1224,6 +1227,7 @@ def main(args=None):
     # read master arc line wavelengths
     wv_master_all = read_wv_master_file(
         wv_master_file=args.wv_master_file,
+        lines='brightest',
         debugplot=args.debugplot
     )
     # clip master arc lines to expected wavelength range
@@ -1289,7 +1293,7 @@ def main(args=None):
         solution_wv = wvcal_spectrum(
             sp=sp_median,
             fxpeaks=fxpeaks,
-            poly_degree_wfit=3,
+            poly_degree_wfit=args.poldeg,
             wv_master=wv_master,
             debugplot=slt.debugplot
         )
