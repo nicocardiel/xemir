@@ -24,6 +24,8 @@ from numina.array.wavecalib.arccalibration import refine_arccalibration
 from numina.array.wavecalib.peaks_spectrum import find_peaks_spectrum
 from numina.array.wavecalib.peaks_spectrum import refine_peaks_spectrum
 
+from emirdrp.core import EMIR_NBARS
+
 from csu_configuration import CsuConfiguration
 from dtu_configuration import DtuConfiguration
 from emir_definitions import NAXIS1_EMIR
@@ -1141,6 +1143,8 @@ def main(args=None):
     parser.add_argument("fitsfile",
                         help="FITS file",
                         type=argparse.FileType('r'))
+    parser.add_argument("--tuple_slit_numbers", required=True,
+                        help="Tuple n1[,n2[,step]] to define slitlet numbers")
     parser.add_argument("--fitted_bound_param", required=True,
                         help="Input JSON with fitted boundary parameters",
                         type=argparse.FileType('r'))
@@ -1166,14 +1170,39 @@ def main(args=None):
     if args.echo:
         print('\033[1m\033[31m% ' + ' '.join(sys.argv) + '\033[0m\n')
 
+    # read slitlet numbers to be computed
+    tmp_str = args.tuple_slit_numbers.split(",")
+    if len(tmp_str) == 3:
+        n1 = int(tmp_str[0])
+        n2 = int(tmp_str[1])
+        step = int(tmp_str[2])
+    elif len(tmp_str) == 2:
+        n1 = int(tmp_str[0])
+        n2 = int(tmp_str[1])
+        step = 1
+    elif len(tmp_str) == 1:
+        n1 = int(tmp_str[0])
+        n2 = n1
+        step = 1
+    else:
+        raise ValueError("Invalid tuple for slitlet numbers")
+    if n1 < 1:
+        raise ValueError("Invalid slitlet number < 1")
+    if n2 > EMIR_NBARS:
+        raise ValueError("Invalid slitlet number > EMIR_NBARS")
+    if step <= 0:
+        raise ValueError("Invalid step <= 0")
+    list_slitlets = range(n1, n2 + 1, step)
+
     csu_conf = CsuConfiguration()
     csu_conf.define_from_fits(args.fitsfile)
     print(csu_conf)
-    raw_input("Pause...")
+    pause_debugplot(args.debugplot)
+
     dtu_conf = DtuConfiguration()
     dtu_conf.define_from_fits(args.fitsfile)
     print(dtu_conf)
-    raw_input("Pause...")
+    pause_debugplot(args.debugplot)
 
     fitted_bound_param = json.loads(open(args.fitted_bound_param.name).read())
     parmodel = fitted_bound_param['meta-info']['parmodel']
@@ -1181,7 +1210,7 @@ def main(args=None):
     print('-' * 79)
     print('* FITTED BOUND PARAMETERS')
     params.pretty_print()
-    raw_input("Pause...")
+    pause_debugplot(args.debugplot)
 
     # read FITS image
     hdulist = fits.open(args.fitsfile)
@@ -1241,7 +1270,6 @@ def main(args=None):
     wv_master = wv_master[lok]
     if abs(args.debugplot) >= 10:
         print("clipped wv_master:\n", wv_master)
-    raw_input("Pause...")
 
     # read master arc line wavelengths (whole data set)
     wv_master_all = read_wv_master_file(
@@ -1255,11 +1283,9 @@ def main(args=None):
     lok = lok1 * lok2
     wv_master_all = wv_master_all[lok]
 
-    islitlet_min = fitted_bound_param['tags']['islitlet_min']
-    islitlet_max = fitted_bound_param['tags']['islitlet_max']
-    list_islitlets = []
+    measured_slitlets = []
 
-    for islitlet in [2,28,54]: #range(islitlet_min, islitlet_max + 1):
+    for islitlet in list_slitlets:
 
         # define Slitlet2D object
         slt = Slitlet2D(islitlet=islitlet,
@@ -1287,10 +1313,7 @@ def main(args=None):
         slt.xy_spectrail_arc_intersections(slitlet2d=slitlet2d)
 
         # compute rectification transformation
-        slt.debugplot = 12
         slt.estimate_tt_to_rectify(order=2, slitlet2d=slitlet2d)
-        print(slt)
-        pause_debugplot(12, optional_prompt="Stop here!")
 
         # rectify image
         slitlet2d_rect = slt.rectify(slitlet2d, resampling=1)
@@ -1313,7 +1336,7 @@ def main(args=None):
             wv_master=wv_master,
             debugplot=slt.debugplot
         )
-        raw_input("Pause...")
+        pause_debugplot(args.debugplot)
 
         # refine wavelength calibration
         poly_initial = np.polynomial.Polynomial(solution_wv.coeff)
@@ -1322,22 +1345,22 @@ def main(args=None):
             poly_initial=poly_initial,
             wv_master=wv_master_all,
             poldeg=args.poldeg_refined,
+            npix=1,
             debugplot=slt.debugplot
         )
-        raw_input("Pause...")
 
         if args.debugplot == 0:
             sys.stdout.write('.')
-            if islitlet == islitlet_max:
+            if islitlet == list_slitlets[-1]:
                 sys.stdout.write('\n')
             sys.stdout.flush()
         else:
             pause_debugplot(args.debugplot)
-        list_islitlets.append(slt)
+        measured_slitlets.append(slt)
 
     if abs(args.debugplot) % 10 != 0:
         ax=ximshow_file(args.fitsfile.name, show=False)
-        for slt in list_islitlets:
+        for slt in measured_slitlets:
             xdum = np.linspace(1, NAXIS1_EMIR, num=NAXIS1_EMIR)
             ylower = \
                 slt.list_spectrails[slt.i_lower_spectrail].poly_funct(xdum)
@@ -1352,9 +1375,7 @@ def main(args=None):
                         stop=arcline.yupper_line
                     )
                     ax.plot(xdum, ydum, 'g-')
-        # pause_debugplot(args.debugplot, pltshow=True)
-        pause_debugplot(12, pltshow=True)
-        raw_input("Pause...")
+        pause_debugplot(args.debugplot, pltshow=True)
 
 
 if __name__ == "__main__":
