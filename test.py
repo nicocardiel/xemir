@@ -20,6 +20,7 @@ from numina.array.display.ximshow import ximshow_file
 from numina.array.display.pause_debugplot import pause_debugplot
 from numina.array.wavecalib.__main__ import read_wv_master_file
 from numina.array.wavecalib.__main__ import wvcal_spectrum
+from numina.array.wavecalib.arccalibration import refine_arccalibration
 from numina.array.wavecalib.peaks_spectrum import find_peaks_spectrum
 from numina.array.wavecalib.peaks_spectrum import refine_peaks_spectrum
 
@@ -1145,8 +1146,11 @@ def main(args=None):
                         type=argparse.FileType('r'))
     parser.add_argument("--wv_master_file", required=True,
                         help="TXT file containing wavelengths")
-    parser.add_argument("--poldeg", required=True,
-                        help="Polynomial degree",
+    parser.add_argument("--poldeg_initial", required=True,
+                        help="Polynomial degree for initial calibration",
+                        type=int)
+    parser.add_argument("--poldeg_refined", required=True,
+                        help="Polynomial degree for refined calibration",
                         type=int)
     # optional arguments
     parser.add_argument("--debugplot",
@@ -1224,20 +1228,32 @@ def main(args=None):
         (naxis1_enlarged - crpix1_enlarged) * \
         cdelt1_enlarged  # Angstroms
 
-    # read master arc line wavelengths
-    wv_master_all = read_wv_master_file(
+    # read master arc line wavelengths (only brightest lines)
+    wv_master = read_wv_master_file(
         wv_master_file=args.wv_master_file,
         lines='brightest',
         debugplot=args.debugplot
     )
-    # clip master arc lines to expected wavelength range
-    lok1 = crmin1_enlarged <= wv_master_all
-    lok2 = wv_master_all <= crmax1_enlarged
+    # clip master arc line list to expected wavelength range
+    lok1 = crmin1_enlarged <= wv_master
+    lok2 = wv_master <= crmax1_enlarged
     lok = lok1 * lok2
-    wv_master = wv_master_all[lok]
+    wv_master = wv_master[lok]
     if abs(args.debugplot) >= 10:
         print("clipped wv_master:\n", wv_master)
     raw_input("Pause...")
+
+    # read master arc line wavelengths (whole data set)
+    wv_master_all = read_wv_master_file(
+        wv_master_file=args.wv_master_file,
+        lines='all',
+        debugplot=args.debugplot
+    )
+    # clip master arc line list to expected wavelength range
+    lok1 = crmin1_enlarged <= wv_master_all
+    lok2 = wv_master_all <= crmax1_enlarged
+    lok = lok1 * lok2
+    wv_master_all = wv_master_all[lok]
 
     islitlet_min = fitted_bound_param['tags']['islitlet_min']
     islitlet_max = fitted_bound_param['tags']['islitlet_max']
@@ -1293,10 +1309,22 @@ def main(args=None):
         solution_wv = wvcal_spectrum(
             sp=sp_median,
             fxpeaks=fxpeaks,
-            poly_degree_wfit=args.poldeg,
+            poly_degree_wfit=args.poldeg_initial,
             wv_master=wv_master,
             debugplot=slt.debugplot
         )
+        raw_input("Pause...")
+
+        # refine wavelength calibration
+        poly_initial = np.polynomial.Polynomial(solution_wv.coeff)
+        poly_refined, npoints_eff, residual_std = refine_arccalibration(
+            sp=sp_median,
+            poly_initial=poly_initial,
+            wv_master=wv_master_all,
+            poldeg=args.poldeg_refined,
+            debugplot=slt.debugplot
+        )
+        raw_input("Pause...")
 
         if args.debugplot == 0:
             sys.stdout.write('.')
