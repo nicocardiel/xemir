@@ -100,7 +100,8 @@ class Slitlet2D(object):
         is used for all the available spectrum trails.
     y0_reference: float
         Y coordinate corresponding to the middle spectrum trail computed
-        at x0_reference.
+        at x0_reference. This value is employed as the Y coordinate of
+        the middle spectrum trail of the rectified slitlet.
     list_spectrails: list of SpectrumTrail instances
         List of spectrum trails defined.
     list_arclines : list of ArcLine instances
@@ -123,9 +124,17 @@ class Slitlet2D(object):
     ttd_aij : numpy array
         Polynomial coefficents corresponding to the rectification
         transformation coefficients a_ij.
+    ttd_aij_smoothed : numpy array
+        Polynomial coefficents corresponding to the rectification
+        transformation coefficients a_ij interpolated with a smooth
+        polynomial variation as a function of y0_reference.
     ttd_bij : numpy array
         Polynomial coefficents corresponding to the rectification
         transformation coefficients b_ij.
+    ttd_bij_smoothed : numpy array
+        Polynomial coefficents corresponding to the rectification
+        transformation coefficients b_ij interpolated with a smooth
+        polynomial variation as a function of y0_reference.
     wpoly_initial : Polynomial instance
         Initial wavelength calibration polynomial, providing the
         wavelength as a function of pixel number (running from 1 to
@@ -134,6 +143,10 @@ class Slitlet2D(object):
         Refined wavelength calibration polynomial, providing the
         wavelength as a function of pixel number (running from 1 to
         NAXIS1), or None (when the fit cannot be obtained).
+    wpoly_refined_smoothed : Polynomial instance
+        Refined and smoothed wavelength calibration polynomial,
+        providing the wavelength as a function of pixel number (running
+        from 1 to NAXIS1), or None (when the fit cannot be obtained).
     debugplot : int
         Debugging level for messages and plots. For details see
         'numina.array.display.pause_debugplot.py'.
@@ -194,9 +207,12 @@ class Slitlet2D(object):
         self.y_inter_rect = None
         self.ttd_order = None
         self.ttd_aij = None
+        self.ttd_aij_smoothed = None
         self.ttd_bij = None
+        self.ttd_bij_smoothed = None
         self.wpoly_initial = None
         self.wpoly_refined = None
+        self.wpoly_refined_smoothed = None
 
         # debugplot
         self.debugplot = debugplot
@@ -262,9 +278,17 @@ class Slitlet2D(object):
         output += \
             "- ttd_order..........:\n\t" + str(self.ttd_order) + "\n" + \
             "- ttd_aij............:\n\t" + str(self.ttd_aij) + "\n" + \
+            "- ttd_aij_smoothed...:\n\t" + \
+            str(self.ttd_aij_smoothed) + "\n" + \
             "- ttd_bij............:\n\t" + str(self.ttd_bij) + "\n" + \
-            "- wpoly_initial......:\n\t" + str(self.wpoly_initial) + "\n" + \
-            "- wpoly_refined......:\n\t" + str(self.wpoly_refined) + "\n" + \
+            "- ttd_bij_smoothed...:\n\t" + \
+            str(self.ttd_bij_smoothed) + "\n" + \
+            "- wpoly_initial.........:\n\t" + \
+            str(self.wpoly_initial) + "\n" + \
+            "- wpoly_refined.........:\n\t" + \
+            str(self.wpoly_refined) + "\n" + \
+            "- wpoly_refined_smoothed:\n\t" + \
+            str(self.wpoly_refined_smoothed) + "\n" + \
             "- debugplot...................: " + \
                  str(self.debugplot)
 
@@ -1440,29 +1464,46 @@ def main(args=None):
 
         if args.debugplot == 0:
             sys.stdout.write('.')
-            print(slt)
+            # print(slt)
             if islitlet == list_slitlets[-1]:
                 sys.stdout.write('\n')
             sys.stdout.flush()
         else:
             pause_debugplot(args.debugplot)
 
-    # polynomial coefficients
-    for i in range(args.poldeg_refined):
+    # polynomial coefficients corresponding to the wavelength calibration
+    # step 1: compute variation of each coefficient as a function of
+    # y0_reference of each slitlet
+    list_poly = []
+    for i in range(args.poldeg_refined  + 1):
         xp = []
         yp = []
         for slt in measured_slitlets:
             if slt.wpoly_refined is not None:
                 xp.append(slt.y0_reference)
                 yp.append(slt.wpoly_refined.coef[i])
-        polfit_residuals(
+        poly, yres, reject = polfit_residuals_with_sigma_rejection(
             x=np.array(xp),
             y=np.array(yp),
             deg=2,
+            times_sigma_reject=5,
             xlabel='y0_rectified',
             ylabel='coeff['  + str(i) + ']',
             debugplot=12
         )
+        list_poly.append(poly)
+    # step 2: use the variation of each polynomial coefficient with
+    # y0_reference to infer the expected wavelength calibration polynomial
+    # for each rectifified slitlet
+    for slt in measured_slitlets:
+        y0_reference = slt.y0_reference
+        list_new_coeff = []
+        for i in range(args.poldeg_refined + 1):
+            new_coeff = list_poly[i](y0_reference)
+            list_new_coeff.append(new_coeff)
+        slt.wpoly_refined_smoothed = np.polynomial.Polynomial(list_new_coeff)
+        print(slt)
+        pause_debugplot(12)
 
     # rectification transformation ttd_aij
     for i in range(6):
