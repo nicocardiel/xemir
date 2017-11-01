@@ -1705,8 +1705,6 @@ def main(args=None):
             raise ValueError("nscan_min=" + str(nscan_max) +
                              " is > NAXIS2_EMIR=" + str(NAXIS2_EMIR))
 
-        # slt.debugplot = 12
-
         # extract 2D image corresponding to the selected slitlet
         if islitlet % 2 == 0:
             slitlet2d = slt.extract_slitlet2d(image2d_even)
@@ -1732,11 +1730,6 @@ def main(args=None):
         j2 = slt.bb_nc2_orig
         i1 = slt.bb_ns1_orig - 1 + ii1
         i2 = i1 + ii2 - ii1
-
-        # print('nscan_min, nscan_max:', nscan_min, nscan_max)
-        # print('ii1, ii2:', ii1, ii2)
-        # print('i1, i2:', i1, i2)
-        # print('j1, j2:', j1, j2)
 
         image2d_rectified[i1:i2, j1:j2] = slitlet2d_rect[ii1:ii2, :]
 
