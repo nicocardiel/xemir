@@ -56,4 +56,4 @@ def save_ndarray_to_fits(array=None, file_name=None,
                        'Linear dispersion (angstrom/pixel) ')
 
     # write output file
-    hdu.writeto(file_name, clobber=clobber)
+    hdu.writeto(file_name, overwrite=clobber)
