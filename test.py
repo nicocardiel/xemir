@@ -13,7 +13,6 @@ from skimage import restoration
 from skimage import transform
 import sys
 
-from numina.array.display.polfit_residuals import polfit_residuals
 from numina.array.display.polfit_residuals import \
     polfit_residuals_with_sigma_rejection
 from numina.array.display.ximplotxy import ximplotxy
@@ -41,8 +40,6 @@ from ccd_line import ArcLine
 from ccd_line import intersection_spectrail_arcline
 
 from numina.array.display.pause_debugplot import DEBUGPLOT_CODES
-
-FUNCTION_EVALUATIONS = 0
 
 
 class Slitlet2D(object):
@@ -104,8 +101,6 @@ class Slitlet2D(object):
         the middle spectrum trail of the rectified slitlet.
     list_spectrails: list of SpectrumTrail instances
         List of spectrum trails defined.
-    list_arclines : list of ArcLine instances
-        List with identified arc lines.
     x_inter_orig : 1d numpy array, float
         X coordinates of the intersection points of arc lines with
         spectrum trails in the original image.
@@ -290,7 +285,7 @@ class Slitlet2D(object):
             "- wpoly_refined_smoothed:\n\t" + \
             str(self.wpoly_refined_smoothed) + "\n" + \
             "- debugplot...................: " + \
-                 str(self.debugplot)
+            str(self.debugplot)
 
         return output
 
@@ -532,7 +527,7 @@ class Slitlet2D(object):
 
         # remove arc lines with unexpected slopes
         yfit = np.array([self.list_arc_lines[k].poly_funct.coef[1]
-                         for k in range(number_arc_lines) ])
+                         for k in range(number_arc_lines)])
         xfit = np.zeros(number_arc_lines)
         # intersection between middle spectrum trail and arc line
         for k in range(number_arc_lines):
@@ -1061,6 +1056,10 @@ class Slitlet2D(object):
                 sp2_ini,
                 sigma=sigma_gaussian_filtering
             )
+        else:
+            sp0 = np.copy(sp0_ini)
+            sp1 = np.copy(sp1_ini)
+            sp2 = np.copy(sp2_ini)
 
         # compute threshold
         q25, q50, q75 = np.percentile(sp0, q=[25.0, 50.0, 75.0])
@@ -1475,7 +1474,7 @@ def main(args=None):
     # step 1: compute variation of each coefficient as a function of
     # y0_reference of each slitlet
     list_poly = []
-    for i in range(args.poldeg_refined  + 1):
+    for i in range(args.poldeg_refined + 1):
         xp = []
         yp = []
         for slt in measured_slitlets:
@@ -1488,7 +1487,7 @@ def main(args=None):
             deg=2,
             times_sigma_reject=5,
             xlabel='y0_rectified',
-            ylabel='coeff['  + str(i) + ']',
+            ylabel='coeff[' + str(i) + ']',
             debugplot=12
         )
         list_poly.append(poly)
@@ -1502,47 +1501,55 @@ def main(args=None):
             new_coeff = list_poly[i](y0_reference)
             list_new_coeff.append(new_coeff)
         slt.wpoly_refined_smoothed = np.polynomial.Polynomial(list_new_coeff)
-        print(slt)
-        pause_debugplot(12)
 
-    # rectification transformation ttd_aij
+    # rectification transformation coefficients ttd_aij and ttd_bij
+    # step 1: compute variation of each coefficient as a function of
+    # y0_reference of each slitlet
+    list_poly_aij = []
+    list_poly_bij = []
     for i in range(6):
         xp = []
-        yp = []
+        yp_aij = []
+        yp_bij = []
         for slt in measured_slitlets:
             if slt.ttd_aij is not None:
                 xp.append(slt.y0_reference)
-                yp.append(slt.ttd_aij[i])
-        polfit_residuals_with_sigma_rejection(
+                yp_aij.append(slt.ttd_aij[i])
+                yp_bij.append(slt.ttd_bij[i])
+        poly, yres, reject = polfit_residuals_with_sigma_rejection(
             x=np.array(xp),
-            y=np.array(yp),
+            y=np.array(yp_aij),
             deg=5,
             times_sigma_reject=5,
             xlabel='y0_rectified',
-            ylabel='ttd_aij['  + str(i) + ']',
+            ylabel='ttd_aij[' + str(i) + ']',
             debugplot=12
         )
-
-    # rectification transformation ttd_bij
-    for i in range(6):
-        xp = []
-        yp = []
-        for slt in measured_slitlets:
-            if slt.ttd_aij is not None:
-                xp.append(slt.y0_reference)
-                yp.append(slt.ttd_bij[i])
-        polfit_residuals_with_sigma_rejection(
+        list_poly_aij.append(poly)
+        poly, yres, reject = polfit_residuals_with_sigma_rejection(
             x=np.array(xp),
-            y=np.array(yp),
+            y=np.array(yp_bij),
             deg=5,
             times_sigma_reject=5,
             xlabel='y0_rectified',
-            ylabel='ttd_bij['  + str(i) + ']',
+            ylabel='ttd_bij[' + str(i) + ']',
             debugplot=12
         )
+        list_poly_bij.append(poly)
+    # step 2: use the variation of each coefficient with y0_reference
+    # to infer the expected rectification transformation for each slitlet
+    for slt in measured_slitlets:
+        y0_reference = slt.y0_reference
+        slt.ttd_aij_smoothed = []
+        slt.ttd_bij_smoothed = []
+        for i in range(6):
+            new_coeff_aij = list_poly_aij[i](y0_reference)
+            slt.ttd_aij_smoothed.append(new_coeff_aij)
+            new_coeff_bij = list_poly_bij[i](y0_reference)
+            slt.ttd_bij_smoothed.append(new_coeff_bij)
 
     if abs(args.debugplot) % 10 != 0:
-        ax=ximshow_file(args.fitsfile.name, show=False)
+        ax = ximshow_file(args.fitsfile.name, show=False)
         for slt in measured_slitlets:
             xdum = np.linspace(1, NAXIS1_EMIR, num=NAXIS1_EMIR)
             ylower = \
