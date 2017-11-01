@@ -923,9 +923,10 @@ class Slitlet2D(object):
         return slitlet2d_rect
 
     def median_spectrum_from_rectified_image(self, slitlet2d_rect,
-                                             nwinwidth_initial,
-                                             nwinwidth_refined,
-                                             times_sigma_threshold,
+                                             sigma_gaussian_filtering=0,
+                                             nwinwidth_initial=5,
+                                             nwinwidth_refined=7,
+                                             times_sigma_threshold=5,
                                              minimum_threshold=None,
                                              npix_avoid_border=0,
                                              nbrightlines=[0]):
@@ -940,6 +941,10 @@ class Slitlet2D(object):
         ----------
         slitlet2d_rect : 2d numpy array
             Rectified slitlet image.
+        sigma_gaussian_filtering : float
+            Sigma of the gaussian filter to be applied to the spectrum
+            in order to avoid problems with saturated lines. This
+            filtering is skipped when this parameter is <= 0.
         nwinwidth_initial : int
             Width of the window where each peak must be found using
             the initial method (approximate)
@@ -989,9 +994,24 @@ class Slitlet2D(object):
         iupper = int(yupper_line + 0.5) - self.bb_ns1_orig
 
         # median spectra using different image regions
-        sp0 = np.median(slitlet2d_rect[ilower:(iupper + 1), :], axis=0)
-        sp1 = np.median(slitlet2d_rect[ilower:(imiddle + 1), :], axis=0)
-        sp2 = np.median(slitlet2d_rect[imiddle:(iupper + 1), :], axis=0)
+        sp0_ini = np.median(slitlet2d_rect[ilower:(iupper + 1), :], axis=0)
+        sp1_ini = np.median(slitlet2d_rect[ilower:(imiddle + 1), :], axis=0)
+        sp2_ini = np.median(slitlet2d_rect[imiddle:(iupper + 1), :], axis=0)
+
+        # gaussian filtering when requested (to avoid line saturation)
+        if sigma_gaussian_filtering > 0:
+            sp0 = ndimage.filters.gaussian_filter(
+                sp0_ini,
+                sigma=sigma_gaussian_filtering
+            )
+            sp1 = ndimage.filters.gaussian_filter(
+                sp1_ini,
+                sigma=sigma_gaussian_filtering
+            )
+            sp2 = ndimage.filters.gaussian_filter(
+                sp2_ini,
+                sigma=sigma_gaussian_filtering
+            )
 
         # compute threshold
         q25, q50, q75 = np.percentile(sp0, q=[25.0, 50.0, 75.0])
@@ -1321,6 +1341,7 @@ def main(args=None):
         # median spectrum and line peaks from rectified image
         sp_median, fxpeaks = slt.median_spectrum_from_rectified_image(
             slitlet2d_rect,
+            sigma_gaussian_filtering=2,
             nwinwidth_initial=5,
             nwinwidth_refined=5,
             times_sigma_threshold=5,
