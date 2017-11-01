@@ -1548,6 +1548,17 @@ def main(args=None):
             new_coeff_bij = list_poly_bij[i](y0_reference)
             slt.ttd_bij_smoothed.append(new_coeff_bij)
 
+    # TODO:
+    # (1) rectify each slitlet and generate a rectified and wavelength
+    #     calibrated image with all the slitlets
+    # (2) save relevant results in JSON file:
+    #     - wavelength calibration polynomial for each rectified slitlet
+    #       (initial, refined, and refined_smoothed)
+
+    # Note that the following code does not have sense since now the program
+    # reads two FITS files with odd- and even-numbered slitlets. In fact,
+    # args.fitsfile does not exist.
+    """
     if abs(args.debugplot) % 10 != 0:
         ax = ximshow_file(args.fitsfile.name, show=False)
         for slt in measured_slitlets:
@@ -1566,6 +1577,7 @@ def main(args=None):
                     )
                     ax.plot(xdum, ydum, 'g-')
         pause_debugplot(args.debugplot, pltshow=True)
+    """
 
 
 if __name__ == "__main__":
