@@ -59,6 +59,17 @@ class DtuConfiguration(object):
             output += "- ZDTU_0:  None\n"
         return output
 
+    def __eq__(self, other):
+        result = \
+            (self.defined == other.defined) and \
+            (self.xdtu == other.xdtu) and \
+            (self.ydtu == other.ydtu) and \
+            (self.zdtu == other.zdtu) and \
+            (self.xdtu_0 == other.xdtu_0) and \
+            (self.ydtu_0 == other.ydtu_0) and \
+            (self.zdtu_0 == other.zdtu_0)
+        return result
+
     def define_from_fits(self, fitsobj, extnum=0):
         """Define class members from header information in FITS file.
 
