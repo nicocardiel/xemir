@@ -2,6 +2,7 @@ from __future__ import division
 from __future__ import print_function
 
 from astropy.io import fits
+from copy import deepcopy
 
 from emirdrp.core import EMIR_NBARS
 
@@ -96,3 +97,43 @@ class CsuConfiguration(object):
 
         # the attributes have been properly set
         self.defined = True
+
+
+def merge_odd_even_csu_configurations(conf_odd, conf_even):
+    """Merge CSU configuration using odd- and even-numbered values.
+
+    The CSU returned CSU configuration include the odd-numbered values
+    from 'conf_odd' and the even-numbered values from 'conf_even'.
+
+    Parameters
+    ----------
+    conf_odd : CsuConfiguration instance
+        CSU configuration corresponding to odd-numbered slitlets.
+    conf_even : CsuConfiguration instance
+        CSU configuration corresponding to even-numbered slitlets.
+
+    Returns
+    -------
+    merged_conf : CsuConfiguration instance
+        CSU configuration resulting from the merging process.
+
+    """
+
+    # initialize resulting CsuConfiguration instance using one of the
+    # input configuration corresponding to the odd-numbered slitlets
+    merged_conf = deepcopy(conf_odd)
+
+    # update the resulting configuration with the values corresponding
+    # to the even-numbered slitlets
+    for i in range(EMIR_NBARS):
+        ibar = i + 1
+        if ibar % 2 == 0:
+            merged_conf.csu_bar_left[i] = conf_even.csu_bar_left[i]
+            merged_conf.csu_bar_right[i] = conf_even.csu_bar_right[i]
+            merged_conf.csu_bar_slit_center[i] = \
+                conf_even.csu_bar_slit_center[i]
+            merged_conf.csu_bar_slit_width[i] = \
+                conf_even.csu_bar_slit_width[i]
+
+    # return merged configuration
+    return merged_conf
