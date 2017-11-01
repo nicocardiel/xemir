@@ -1698,7 +1698,12 @@ def main(args=None):
         sys.stdout.flush()
 
         nscan_min = int(slt.y0_frontier_lower + 0.5)
+        if nscan_min < 1:
+            raise ValueError("nscan_min=" + str(nscan_max) + " is < 1")
         nscan_max = int(slt.y0_frontier_upper + 0.5)
+        if nscan_max > NAXIS2_EMIR:
+            raise ValueError("nscan_min=" + str(nscan_max) +
+                             " is > NAXIS2_EMIR=" + str(NAXIS2_EMIR))
 
         # slt.debugplot = 12
 
@@ -1738,7 +1743,7 @@ def main(args=None):
     if abs(args.debugplot) % 10 != 0:
         ximshow(image2d_rectified, debugplot=12)
 
-    save_ndarray_to_fits(image2d_rectified, args.out_rect)
+    save_ndarray_to_fits(image2d_rectified, args.out_rect, clobber=True)
 
     # ------------------------------------------------------------------------
     # TODO:
