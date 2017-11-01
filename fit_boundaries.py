@@ -420,6 +420,72 @@ def expected_distorted_boundaries(islitlet, csu_bar_slit_center,
     return list_spectrails
 
 
+def expected_distorted_frontiers(islitlet, csu_bar_slit_center,
+                                 params, parmodel,
+                                 numpts, deg, debugplot=0):
+    """Return polynomial coefficients of expected distorted frontiers.
+
+    Note that the frontiers are computed as the polynomials that extend
+    the slitlet region defined by its boundaries, encompassing half the
+    slit gap between consecutive slitlets.
+
+    Parameters
+    ----------
+    islitlet : int
+        Number of slitlet.
+    csu_bar_slit_center : float
+        CSU bar slit center, in mm.
+    params : :class:`~lmfit.parameter.Parameters`
+        Parameters to be employed in the prediction of the distorted
+        boundaries.
+    parmodel : str
+        Model to be assumed. Allowed values are 'longslit' and
+        'multislit'.
+    numpts : int
+        Number of points in which the X-range interval is subdivided
+        before fitting the returned polynomials.
+    deg : int
+        Degree of the fitted polynomial.
+    debugplot : int
+        Debugging level for messages and plots. For details see
+        'numina.array.display.pause_debugplot.py'.
+
+    Returns
+    -------
+    list_frontiers : list of SpectrumTrail objects
+        List containing the polynomials defining the two slitlet
+        frontiers (lower and upper, respectively).
+
+    """
+
+    c2, c4, ff, slit_gap, slit_height, theta0, x0, y0, y_baseline = \
+        return_params(islitlet, csu_bar_slit_center, params, parmodel)
+
+    xp = np.linspace(1, NAXIS1_EMIR, numpts)
+    slit_dist = (slit_height * 10) + slit_gap
+
+    # undistorted (constant) y-coordinate of the lower and upper frontiers
+    ybottom = y_baseline * 100 + (islitlet - 1) * slit_dist - slit_gap / 2
+    ytop = ybottom + (slit_height * 10) + slit_gap
+
+    list_frontiers = []
+    for i in range(2):
+        if i == 0:
+            yvalue = ybottom
+        else:
+            yvalue = ytop
+        # undistorted boundary
+        yp_value = np.ones(numpts) * yvalue
+        # distorted boundary
+        xdist, ydist = exvp(xp, yp_value, x0=x0, y0=y0,
+                            c2=c2, c4=c4, theta0=theta0, ff=ff)
+        spectrail = SpectrumTrail()  # declare SpectrumTrail instance
+        spectrail.fit(x=xdist, y=ydist, deg=deg, debugplot=debugplot)
+        list_frontiers.append(spectrail)
+
+    return list_frontiers
+
+
 def fun_residuals(params, parmodel, bounddict, numresolution,
                   islitmin, islitmax, debugplot):
     """Function to be minimised.
