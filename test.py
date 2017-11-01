@@ -17,7 +17,6 @@ from numina.array.display.polfit_residuals import \
     polfit_residuals_with_sigma_rejection
 from numina.array.display.ximplotxy import ximplotxy
 from numina.array.display.ximshow import ximshow
-from numina.array.display.ximshow import ximshow_file
 from numina.array.display.pause_debugplot import pause_debugplot
 from numina.array.wavecalib.__main__ import read_wv_master_file
 from numina.array.wavecalib.__main__ import wvcal_spectrum
@@ -113,19 +112,24 @@ class Slitlet2D(object):
     y_inter_rect : 1d numpy array, float
         Y coordinates of the intersection points of arc lines with
         spectrum trails in the rectified image.
-    ttd_order : int
+    ttd_order : int or None
         Polynomial order corresponding to the rectification
-        transformation.
+        transformation. It is None until the coefficients ttd_aij and
+        ttd_bij have been computed.
     ttd_aij : numpy array
         Polynomial coefficents corresponding to the rectification
         transformation coefficients a_ij.
+    ttd_bij : numpy array
+        Polynomial coefficents corresponding to the rectification
+        transformation coefficients b_ij.
+    ttd_order_smoothed : int or None
+        Polynomial order corresponding to the smoothed rectification
+        transformation. It is None until the coefficients
+        ttd_aij_smoothed and ttd_bij_smoothed have been computed.
     ttd_aij_smoothed : numpy array
         Polynomial coefficents corresponding to the rectification
         transformation coefficients a_ij interpolated with a smooth
         polynomial variation as a function of y0_reference.
-    ttd_bij : numpy array
-        Polynomial coefficents corresponding to the rectification
-        transformation coefficients b_ij.
     ttd_bij_smoothed : numpy array
         Polynomial coefficents corresponding to the rectification
         transformation coefficients b_ij interpolated with a smooth
@@ -202,8 +206,9 @@ class Slitlet2D(object):
         self.y_inter_rect = None
         self.ttd_order = None
         self.ttd_aij = None
-        self.ttd_aij_smoothed = None
         self.ttd_bij = None
+        self.ttd_order_smoothed = None
+        self.ttd_aij_smoothed = None
         self.ttd_bij_smoothed = None
         self.wpoly_initial = None
         self.wpoly_refined = None
@@ -271,11 +276,13 @@ class Slitlet2D(object):
                           str(dumval[0]) + ", ..., " + \
                           str(dumval[-1]) + "]\n"
         output += \
-            "- ttd_order..........:\n\t" + str(self.ttd_order) + "\n" + \
+            "- ttd_order..........: " + str(self.ttd_order) + "\n" + \
             "- ttd_aij............:\n\t" + str(self.ttd_aij) + "\n" + \
+            "- ttd_bij............:\n\t" + str(self.ttd_bij) + "\n" + \
+            "- ttd_order_smoothed.: " + \
+            str(self.ttd_order_smoothed) + "\n" + \
             "- ttd_aij_smoothed...:\n\t" + \
             str(self.ttd_aij_smoothed) + "\n" + \
-            "- ttd_bij............:\n\t" + str(self.ttd_bij) + "\n" + \
             "- ttd_bij_smoothed...:\n\t" + \
             str(self.ttd_bij_smoothed) + "\n" + \
             "- wpoly_initial.........:\n\t" + \
@@ -876,7 +883,7 @@ class Slitlet2D(object):
             # show plot
             pause_debugplot(self.debugplot, pltshow=True)
 
-    def rectify(self, slitlet2d, resampling):
+    def rectify(self, slitlet2d, resampling, transformation):
         """Rectify slitlet using computed transformation.
 
         Parameters
@@ -885,6 +892,8 @@ class Slitlet2D(object):
             Image containing the 2d slitlet image.
         resampling : int
             1: nearest neighbour, 2: flux preserving interpolation.
+        transformation : int
+            1: initial, 2: smoothed
 
         Returns
         -------
@@ -895,6 +904,10 @@ class Slitlet2D(object):
 
         if resampling not in [1, 2]:
             raise ValueError("Unexpected resampling value=" + str(resampling))
+
+        if transformation not in [1, 2]:
+            raise ValueError("Unexpected transformation value=" +
+                             str(transformation))
 
         # initialize output array
         slitlet2d_rect = np.zeros_like(slitlet2d)
@@ -909,12 +922,21 @@ class Slitlet2D(object):
             # below requires floats, these arrays must use dtype=np.float
             j = np.arange(0, naxis1, dtype=np.float)
             i = np.arange(0, naxis2, dtype=np.float)
-            # the cartesian product of the previous 1d arrays could be stored
+            # the cartesian product of the previous 1D arrays could be stored
             # as np.transpose([xx,yy]), where xx and yy are computed as follows
             xx = np.tile(j, (len(i),))
             yy = np.repeat(i, len(j))
             # compute pixel coordinates in original (distorted) image
-            xxx, yyy = fmap(self.ttd_order, self.ttd_aij, self.ttd_bij, xx, yy)
+            if transformation == 1:
+                xxx, yyy = fmap(self.ttd_order,
+                                self.ttd_aij,
+                                self.ttd_bij,
+                                xx, yy)
+            else:
+                xxx, yyy = fmap(self.ttd_order_smoothed,
+                                self.ttd_aij_smoothed,
+                                self.ttd_bij_smoothed,
+                                xx, yy)
             # round to nearest integer and cast to integer; note that the
             # rounding still provides a float, so the casting is required
             ixxx = np.rint(xxx).astype(np.int)
@@ -938,8 +960,9 @@ class Slitlet2D(object):
             ax = ximshow(slitlet2d_rect, title=title,
                          first_pixel=(self.bb_nc1_orig, self.bb_ns1_orig),
                          show=False)
-            # intersection points
-            ax.plot(self.x_inter_rect, self.y_inter_rect, 'bo')
+            if self.list_arc_lines is not None:
+                # intersection points
+                ax.plot(self.x_inter_rect, self.y_inter_rect, 'bo')
             # grid with fitted transformation: spectrum trails
             xx = np.arange(0, self.bb_nc2_orig - self.bb_nc1_orig + 1,
                            dtype=np.float)
@@ -957,10 +980,11 @@ class Slitlet2D(object):
                              yupper_line - self.bb_ns1_orig,
                              num=n_points,
                              dtype=np.float)
-            for arc_line in self.list_arc_lines:
-                xline = arc_line.x_rectified - self.bb_nc1_orig
-                xx = np.array([xline] * n_points)
-                ax.plot(xx + self.bb_nc1_orig, yy + self.bb_ns1_orig, "b")
+            if self.list_arc_lines is not None:
+                for arc_line in self.list_arc_lines:
+                    xline = arc_line.x_rectified - self.bb_nc1_orig
+                    xx = np.array([xline] * n_points)
+                    ax.plot(xx + self.bb_nc1_orig, yy + self.bb_ns1_orig, "b")
             # show plot
             pause_debugplot(self.debugplot, pltshow=True)
 
@@ -1163,6 +1187,28 @@ class Slitlet2D(object):
         return sp0, fxpeaks
 
 
+def ncoef_fmap(order):
+    """Expected number of coefficients for the 2D polynomial transformation.
+
+    Parameters
+    ----------
+    order : int
+        Order of the 2D polynomial transformation.
+
+    Returns
+    -------
+    ncoef : int
+        Expected number of coefficients.
+
+    """
+
+    ncoef = 0
+    for i in range(order + 1):
+        for j in range(i + 1):
+            ncoef += 1
+    return ncoef
+
+
 def fmap(order, aij, bij, x, y):
     """Evaluate the 2D polynomial transformation.
 
@@ -1219,6 +1265,10 @@ def main(args=None):
     parser.add_argument("--fitted_bound_param", required=True,
                         help="Input JSON with fitted boundary parameters",
                         type=argparse.FileType('r'))
+    parser.add_argument("--order_fmap", required=True,
+                        help="Order of the 2D rectification transformation "
+                             "(default=2)",
+                        default=2, type=int)
     parser.add_argument("--wv_master_file", required=True,
                         help="TXT file containing wavelengths")
     parser.add_argument("--poldeg_initial", required=True,
@@ -1240,6 +1290,8 @@ def main(args=None):
 
     if args.echo:
         print('\033[1m\033[31m% ' + ' '.join(sys.argv) + '\033[0m\n')
+
+    # ------------------------------------------------------------------------
 
     # read slitlet numbers to be computed
     tmp_str = args.tuple_slit_numbers.split(",")
@@ -1379,6 +1431,8 @@ def main(args=None):
     lok = lok1 * lok2
     wv_master_all = wv_master_all[lok]
 
+    # ------------------------------------------------------------------------
+
     measured_slitlets = []
 
     for islitlet in list_slitlets:
@@ -1416,10 +1470,13 @@ def main(args=None):
             slt.xy_spectrail_arc_intersections(slitlet2d=slitlet2d)
 
             # compute rectification transformation
-            slt.estimate_tt_to_rectify(order=2, slitlet2d=slitlet2d)
+            slt.estimate_tt_to_rectify(order=args.order_fmap,
+                                       slitlet2d=slitlet2d)
 
             # rectify image
-            slitlet2d_rect = slt.rectify(slitlet2d, resampling=1)
+            slitlet2d_rect = slt.rectify(slitlet2d,
+                                         resampling=1,
+                                         transformation=1)
 
             # median spectrum and line peaks from rectified image
             sp_median, fxpeaks = slt.median_spectrum_from_rectified_image(
@@ -1462,13 +1519,19 @@ def main(args=None):
         measured_slitlets.append(slt)
 
         if args.debugplot == 0:
-            sys.stdout.write('.')
+            if islitlet % 10 == 0:
+                cout = str(islitlet // 10)
+            else:
+                cout = '.'
+            sys.stdout.write(cout)
             # print(slt)
             if islitlet == list_slitlets[-1]:
                 sys.stdout.write('\n')
             sys.stdout.flush()
         else:
             pause_debugplot(args.debugplot)
+
+    # ------------------------------------------------------------------------
 
     # polynomial coefficients corresponding to the wavelength calibration
     # step 1: compute variation of each coefficient as a function of
@@ -1488,7 +1551,7 @@ def main(args=None):
             times_sigma_reject=5,
             xlabel='y0_rectified',
             ylabel='coeff[' + str(i) + ']',
-            debugplot=12
+            debugplot=args.debugplot
         )
         list_poly.append(poly)
     # step 2: use the variation of each polynomial coefficient with
@@ -1502,12 +1565,15 @@ def main(args=None):
             list_new_coeff.append(new_coeff)
         slt.wpoly_refined_smoothed = np.polynomial.Polynomial(list_new_coeff)
 
+    # ------------------------------------------------------------------------
+
     # rectification transformation coefficients ttd_aij and ttd_bij
     # step 1: compute variation of each coefficient as a function of
     # y0_reference of each slitlet
     list_poly_aij = []
     list_poly_bij = []
-    for i in range(6):
+    ncoef_ttd = ncoef_fmap(args.order_fmap)
+    for i in range(ncoef_ttd):
         xp = []
         yp_aij = []
         yp_bij = []
@@ -1523,7 +1589,7 @@ def main(args=None):
             times_sigma_reject=5,
             xlabel='y0_rectified',
             ylabel='ttd_aij[' + str(i) + ']',
-            debugplot=12
+            debugplot=args.debugplot
         )
         list_poly_aij.append(poly)
         poly, yres, reject = polfit_residuals_with_sigma_rejection(
@@ -1533,21 +1599,51 @@ def main(args=None):
             times_sigma_reject=5,
             xlabel='y0_rectified',
             ylabel='ttd_bij[' + str(i) + ']',
-            debugplot=12
+            debugplot=args.debugplot
         )
         list_poly_bij.append(poly)
     # step 2: use the variation of each coefficient with y0_reference
     # to infer the expected rectification transformation for each slitlet
     for slt in measured_slitlets:
+        slt.ttd_order_smoothed = args.order_fmap
         y0_reference = slt.y0_reference
         slt.ttd_aij_smoothed = []
         slt.ttd_bij_smoothed = []
-        for i in range(6):
+        for i in range(ncoef_ttd):
             new_coeff_aij = list_poly_aij[i](y0_reference)
             slt.ttd_aij_smoothed.append(new_coeff_aij)
             new_coeff_bij = list_poly_bij[i](y0_reference)
             slt.ttd_bij_smoothed.append(new_coeff_bij)
 
+    # ------------------------------------------------------------------------
+
+    for slt in measured_slitlets:
+
+        print(slt)
+
+        islitlet = slt.islitlet
+
+        slt.debugplot = 12
+
+        # extract 2D image corresponding to the selected slitlet
+        if islitlet % 2 == 0:
+            slitlet2d = slt.extract_slitlet2d(image2d_even)
+        else:
+            slitlet2d = slt.extract_slitlet2d(image2d_odd)
+
+        # rectify image
+        if slt.ttd_order is not None:
+            transformation = 1
+        elif slt.ttd_order_smoothed is not None:
+            transformation = 2
+        else:
+            raise ValueError("No ttd transformation defined!")
+
+        slitlet2d_rect = slt.rectify(slitlet2d,
+                                     resampling=1,
+                                     transformation=transformation)
+
+    # ------------------------------------------------------------------------
     # TODO:
     # (1) rectify each slitlet and generate a rectified and wavelength
     #     calibrated image with all the slitlets
