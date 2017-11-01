@@ -26,6 +26,8 @@ from numina.array.wavecalib.peaks_spectrum import refine_peaks_spectrum
 
 from emirdrp.core import EMIR_NBARS
 
+from ccd_line import ArcLine
+from ccd_line import intersection_spectrail_arcline
 from csu_configuration import CsuConfiguration
 from csu_configuration import merge_odd_even_csu_configurations
 from dtu_configuration import DtuConfiguration
@@ -33,16 +35,21 @@ from emir_definitions import NAXIS1_EMIR
 from emir_definitions import NAXIS2_EMIR
 from fit_boundaries import bound_params_from_dict
 from fit_boundaries import expected_distorted_boundaries
+from fit_boundaries import expected_distorted_frontiers
 from rescale_array_to_z1z2 import rescale_array_to_z1z2
 from rescale_array_to_z1z2 import rescale_array_from_z1z2
-from ccd_line import ArcLine
-from ccd_line import intersection_spectrail_arcline
+from save_ndarray_to_fits import save_ndarray_to_fits
 
 from numina.array.display.pause_debugplot import DEBUGPLOT_CODES
 
 
 class Slitlet2D(object):
     """Slitlet2D class definition.
+
+    It is important to distinguish between boundaries (the slitlet
+    region when useful information is available) and frontiers (which
+    define the real separation between consecutive slitlets when no gap
+    between them is considered).
 
     Parameters
     ----------
@@ -91,15 +98,31 @@ class Slitlet2D(object):
         Maximum Y coordinate of the enclosing bounding box (in pixel
         units) in the original image.
     x0_reference : float
-        X coordinate where the rectified y0_reference is computed
+        X coordinate where the rectified y0_reference_middle is computed
         as the Y coordinate of the spectrum trails. The same value
         is used for all the available spectrum trails.
-    y0_reference: float
+    y0_reference_lower: float
+        Y coordinate corresponding to the lower spectrum trail computed
+        at x0_reference. This value is employed as the Y coordinate of
+        the lower spectrum trail of the rectified slitlet.
+    y0_reference_middle: float
         Y coordinate corresponding to the middle spectrum trail computed
         at x0_reference. This value is employed as the Y coordinate of
         the middle spectrum trail of the rectified slitlet.
+    y0_reference_upper: float
+        Y coordinate corresponding to the upper spectrum trail computed
+        at x0_reference. This value is employed as the Y coordinate of
+        the upper spectrum trail of the rectified slitlet.
+    y0_frontier_lower: float
+        Y coordinate corresponding to the lower frontier computed at
+        x0_reference.
+    y0_frontier_upper: float
+        Y coordinate corresponding to the upper frontier computed at
+        x0_reference.
     list_spectrails: list of SpectrumTrail instances
         List of spectrum trails defined.
+    list_frontiers: list of SpectrumTrail instances
+        List of spectrum trails defining the slitlet frontiers.
     x_inter_orig : 1d numpy array, float
         X coordinates of the intersection points of arc lines with
         spectrum trails in the original image.
@@ -129,11 +152,11 @@ class Slitlet2D(object):
     ttd_aij_smoothed : numpy array
         Polynomial coefficents corresponding to the rectification
         transformation coefficients a_ij interpolated with a smooth
-        polynomial variation as a function of y0_reference.
+        polynomial variation as a function of y0_reference_middle.
     ttd_bij_smoothed : numpy array
         Polynomial coefficents corresponding to the rectification
         transformation coefficients b_ij interpolated with a smooth
-        polynomial variation as a function of y0_reference.
+        polynomial variation as a function of y0_reference_middle.
     wpoly_initial : Polynomial instance
         Initial wavelength calibration polynomial, providing the
         wavelength as a function of pixel number (running from 1 to
@@ -182,10 +205,28 @@ class Slitlet2D(object):
         for spectrail in self.list_spectrails:
             spectrail.y_rectified = spectrail.poly_funct(self.x0_reference)
 
-        # define reference ordinate using middle spectrail computed
-        # at x0_reference
-        self.y0_reference = \
+        # define reference ordinates using lower, middle and upper spectrails
+        # evaluated at x0_reference
+        self.y0_reference_lower = \
+            self.list_spectrails[self.i_lower_spectrail].y_rectified
+        self.y0_reference_middle = \
             self.list_spectrails[self.i_middle_spectrail].y_rectified
+        self.y0_reference_upper = \
+            self.list_spectrails[self.i_upper_spectrail].y_rectified
+
+        # compute frontiers (lower and upper)
+        self.list_frontiers = expected_distorted_frontiers(
+            islitlet, self.csu_bar_left,
+            params, parmodel,
+            numpts=101, deg=5, debugplot=0
+        )
+        # update y_rectified computed at x0_reference
+        for spectrail in self.list_frontiers:
+            spectrail.y_rectified = spectrail.poly_funct(self.x0_reference)
+
+        # define frontier ordinates at x0_reference
+        self.y0_frontier_lower = self.list_frontiers[0].y_rectified
+        self.y0_frontier_upper = self.list_frontiers[1].y_rectified
 
         # determine vertical bounding box
         xdum = np.linspace(1, NAXIS1_EMIR, num=NAXIS1_EMIR)
@@ -234,8 +275,16 @@ class Slitlet2D(object):
                  str(self.csu_bar_slit_width) + "\n" + \
             "- x0_reference................: " + \
                  str(self.x0_reference) + "\n" + \
-            "- y0_reference................: " + \
-                 str(self.y0_reference) + "\n" + \
+            "- y0_reference_lower..........: " + \
+                str(self.y0_reference_lower) + "\n" + \
+            "- y0_reference_middle.........: " + \
+                 str(self.y0_reference_middle) + "\n" + \
+            "- y0_reference_upper..........: " + \
+                 str(self.y0_reference_upper) + "\n" + \
+            "- y0_frontier_lower..........: " + \
+                 str(self.y0_frontier_lower) + "\n" + \
+            "- y0_frontier_upper..........: " + \
+                 str(self.y0_frontier_upper) + "\n" + \
             "- bb_nc1_orig.................: " + \
                  str(self.bb_nc1_orig) + "\n" + \
             "- bb_nc2_orig.................: " + \
@@ -252,7 +301,11 @@ class Slitlet2D(object):
                  + "\n" + \
             "- upper spectrail.poly_funct..:\n\t" + \
                  str(self.list_spectrails[self.i_upper_spectrail].poly_funct)\
-                 + "\n"
+                 + "\n" + \
+            "- lower frontier.poly_funct...:\n\t" + \
+                str(self.list_frontiers[0].poly_funct) + "\n" + \
+            "- upper frontier.poly_funct...:\n\t" + \
+                str(self.list_frontiers[1].poly_funct) + "\n"
 
         if self.list_arc_lines is None:
             number_arc_lines = None
@@ -334,6 +387,10 @@ class Slitlet2D(object):
             yupper = \
                 self.list_spectrails[self.i_upper_spectrail].poly_funct(xdum)
             ax.plot(xdum, yupper, 'b-')
+            ylower_frontier = self.list_frontiers[0].poly_funct(xdum)
+            ax.plot(xdum, ylower_frontier, 'b:')
+            yupper_frontier = self.list_frontiers[1].poly_funct(xdum)
+            ax.plot(xdum, yupper_frontier, 'b:')
             pause_debugplot(debugplot=self.debugplot, pltshow=True)
 
         # return slitlet image
@@ -970,6 +1027,10 @@ class Slitlet2D(object):
                 yy0 = spectrail.y_rectified
                 yy = np.tile([yy0 - self.bb_ns1_orig], xx.size)
                 ax.plot(xx + self.bb_nc1_orig, yy + self.bb_ns1_orig, "b")
+            for spectrail in self.list_frontiers:
+                yy0 = spectrail.y_rectified
+                yy = np.tile([yy0 - self.bb_ns1_orig], xx.size)
+                ax.plot(xx + self.bb_nc1_orig, yy + self.bb_ns1_orig, "b:")
             # grid with fitted transformation: arc lines
             ylower_line = \
                 self.list_spectrails[self.i_lower_spectrail].y_rectified
@@ -1277,6 +1338,10 @@ def main(args=None):
     parser.add_argument("--poldeg_refined", required=True,
                         help="Polynomial degree for refined calibration",
                         type=int)
+    parser.add_argument("--out_rect", required=True,
+                        help="Rectified but not wavelength calibrated output "
+                             "FITS file",
+                        type=argparse.FileType('w'))
     # optional arguments
     parser.add_argument("--debugplot",
                         help="Integer indicating plotting & debugging options"
@@ -1535,14 +1600,14 @@ def main(args=None):
 
     # polynomial coefficients corresponding to the wavelength calibration
     # step 1: compute variation of each coefficient as a function of
-    # y0_reference of each slitlet
+    # y0_reference_middle of each slitlet
     list_poly = []
     for i in range(args.poldeg_refined + 1):
         xp = []
         yp = []
         for slt in measured_slitlets:
             if slt.wpoly_refined is not None:
-                xp.append(slt.y0_reference)
+                xp.append(slt.y0_reference_middle)
                 yp.append(slt.wpoly_refined.coef[i])
         poly, yres, reject = polfit_residuals_with_sigma_rejection(
             x=np.array(xp),
@@ -1555,13 +1620,13 @@ def main(args=None):
         )
         list_poly.append(poly)
     # step 2: use the variation of each polynomial coefficient with
-    # y0_reference to infer the expected wavelength calibration polynomial
-    # for each rectifified slitlet
+    # y0_reference_middle to infer the expected wavelength calibration
+    # polynomial for each rectifified slitlet
     for slt in measured_slitlets:
-        y0_reference = slt.y0_reference
+        y0_reference_middle = slt.y0_reference_middle
         list_new_coeff = []
         for i in range(args.poldeg_refined + 1):
-            new_coeff = list_poly[i](y0_reference)
+            new_coeff = list_poly[i](y0_reference_middle)
             list_new_coeff.append(new_coeff)
         slt.wpoly_refined_smoothed = np.polynomial.Polynomial(list_new_coeff)
 
@@ -1569,7 +1634,7 @@ def main(args=None):
 
     # rectification transformation coefficients ttd_aij and ttd_bij
     # step 1: compute variation of each coefficient as a function of
-    # y0_reference of each slitlet
+    # y0_reference_middle of each slitlet
     list_poly_aij = []
     list_poly_bij = []
     ncoef_ttd = ncoef_fmap(args.order_fmap)
@@ -1579,7 +1644,7 @@ def main(args=None):
         yp_bij = []
         for slt in measured_slitlets:
             if slt.ttd_aij is not None:
-                xp.append(slt.y0_reference)
+                xp.append(slt.y0_reference_middle)
                 yp_aij.append(slt.ttd_aij[i])
                 yp_bij.append(slt.ttd_bij[i])
         poly, yres, reject = polfit_residuals_with_sigma_rejection(
@@ -1602,28 +1667,40 @@ def main(args=None):
             debugplot=args.debugplot
         )
         list_poly_bij.append(poly)
-    # step 2: use the variation of each coefficient with y0_reference
+    # step 2: use the variation of each coefficient with y0_reference_middle
     # to infer the expected rectification transformation for each slitlet
     for slt in measured_slitlets:
         slt.ttd_order_smoothed = args.order_fmap
-        y0_reference = slt.y0_reference
+        y0_reference_middle = slt.y0_reference_middle
         slt.ttd_aij_smoothed = []
         slt.ttd_bij_smoothed = []
         for i in range(ncoef_ttd):
-            new_coeff_aij = list_poly_aij[i](y0_reference)
+            new_coeff_aij = list_poly_aij[i](y0_reference_middle)
             slt.ttd_aij_smoothed.append(new_coeff_aij)
-            new_coeff_bij = list_poly_bij[i](y0_reference)
+            new_coeff_bij = list_poly_bij[i](y0_reference_middle)
             slt.ttd_bij_smoothed.append(new_coeff_bij)
 
     # ------------------------------------------------------------------------
 
-    for slt in measured_slitlets:
+    image2d_rectified = np.zeros((NAXIS2_EMIR, NAXIS1_EMIR))
 
-        print(slt)
+    for slt in measured_slitlets:
 
         islitlet = slt.islitlet
 
-        slt.debugplot = 12
+        if islitlet % 10 == 0:
+            cout = str(islitlet // 10)
+        else:
+            cout = '.'
+        sys.stdout.write(cout)
+        if islitlet == list_slitlets[-1]:
+            sys.stdout.write('\n')
+        sys.stdout.flush()
+
+        nscan_min = int(slt.y0_frontier_lower + 0.5)
+        nscan_max = int(slt.y0_frontier_upper + 0.5)
+
+        # slt.debugplot = 12
 
         # extract 2D image corresponding to the selected slitlet
         if islitlet % 2 == 0:
@@ -1642,6 +1719,26 @@ def main(args=None):
         slitlet2d_rect = slt.rectify(slitlet2d,
                                      resampling=1,
                                      transformation=transformation)
+
+        ii1 = nscan_min - slt.bb_ns1_orig
+        ii2 = nscan_max - slt.bb_ns1_orig + 1
+
+        j1 = slt.bb_nc1_orig - 1
+        j2 = slt.bb_nc2_orig
+        i1 = slt.bb_ns1_orig - 1 + ii1
+        i2 = i1 + ii2 - ii1
+
+        # print('nscan_min, nscan_max:', nscan_min, nscan_max)
+        # print('ii1, ii2:', ii1, ii2)
+        # print('i1, i2:', i1, i2)
+        # print('j1, j2:', j1, j2)
+
+        image2d_rectified[i1:i2, j1:j2] = slitlet2d_rect[ii1:ii2, :]
+
+    if abs(args.debugplot) % 10 != 0:
+        ximshow(image2d_rectified, debugplot=12)
+
+    save_ndarray_to_fits(image2d_rectified, args.out_rect)
 
     # ------------------------------------------------------------------------
     # TODO:
