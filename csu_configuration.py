@@ -51,6 +51,15 @@ class CsuConfiguration(object):
                 output += 4 * "   None " + "\n"
         return output
 
+    def __eq__(self, other):
+        result = \
+            (self.defined == other.defined) and \
+            (self.csu_bar_left == other.csu_bar_left) and \
+            (self.csu_bar_right == other.csu_bar_right) and \
+            (self.csu_bar_slit_center == other.csu_bar_slit_center) and \
+            (self.csu_bar_slit_width == other.csu_bar_slit_width)
+        return result
+
     def define_from_fits(self, fitsobj, extnum=0):
         """Define class members from header information in FITS file.
 
