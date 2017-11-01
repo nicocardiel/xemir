@@ -3,6 +3,7 @@ from __future__ import print_function
 
 import argparse
 from astropy.io import fits
+from copy import deepcopy
 import json
 from matplotlib.patches import Rectangle
 import numpy as np
@@ -12,6 +13,7 @@ from skimage import restoration
 from skimage import transform
 import sys
 
+from numina.array.display.polfit_residuals import polfit_residuals
 from numina.array.display.polfit_residuals import \
     polfit_residuals_with_sigma_rejection
 from numina.array.display.ximplotxy import ximplotxy
@@ -27,6 +29,7 @@ from numina.array.wavecalib.peaks_spectrum import refine_peaks_spectrum
 from emirdrp.core import EMIR_NBARS
 
 from csu_configuration import CsuConfiguration
+from csu_configuration import merge_odd_even_csu_configurations
 from dtu_configuration import DtuConfiguration
 from emir_definitions import NAXIS1_EMIR
 from emir_definitions import NAXIS2_EMIR
@@ -95,6 +98,9 @@ class Slitlet2D(object):
         X coordinate where the rectified y0_reference is computed
         as the Y coordinate of the spectrum trails. The same value
         is used for all the available spectrum trails.
+    y0_reference: float
+        Y coordinate corresponding to the middle spectrum trail computed
+        at x0_reference.
     list_spectrails: list of SpectrumTrail instances
         List of spectrum trails defined.
     list_arclines : list of ArcLine instances
@@ -120,6 +126,14 @@ class Slitlet2D(object):
     ttd_bij : numpy array
         Polynomial coefficents corresponding to the rectification
         transformation coefficients b_ij.
+    wpoly_initial : Polynomial instance
+        Initial wavelength calibration polynomial, providing the
+        wavelength as a function of pixel number (running from 1 to
+        NAXIS1).
+    wpoly_refined : Polynomial instance
+        Refined wavelength calibration polynomial, providing the
+        wavelength as a function of pixel number (running from 1 to
+        NAXIS1), or None (when the fit cannot be obtained).
     debugplot : int
         Debugging level for messages and plots. For details see
         'numina.array.display.pause_debugplot.py'.
@@ -156,6 +170,11 @@ class Slitlet2D(object):
         for spectrail in self.list_spectrails:
             spectrail.y_rectified = spectrail.poly_funct(self.x0_reference)
 
+        # define reference ordinate using middle spectrail computed
+        # at x0_reference
+        self.y0_reference = \
+            self.list_spectrails[self.i_middle_spectrail].y_rectified
+
         # determine vertical bounding box
         xdum = np.linspace(1, NAXIS1_EMIR, num=NAXIS1_EMIR)
         ylower = self.list_spectrails[self.i_lower_spectrail].poly_funct(xdum)
@@ -176,6 +195,8 @@ class Slitlet2D(object):
         self.ttd_order = None
         self.ttd_aij = None
         self.ttd_bij = None
+        self.wpoly_initial = None
+        self.wpoly_refined = None
 
         # debugplot
         self.debugplot = debugplot
@@ -197,6 +218,8 @@ class Slitlet2D(object):
                  str(self.csu_bar_slit_width) + "\n" + \
             "- x0_reference................: " + \
                  str(self.x0_reference) + "\n" + \
+            "- y0_reference................: " + \
+                 str(self.y0_reference) + "\n" + \
             "- bb_nc1_orig.................: " + \
                  str(self.bb_nc1_orig) + "\n" + \
             "- bb_nc2_orig.................: " + \
@@ -240,6 +263,8 @@ class Slitlet2D(object):
             "- ttd_order..........:\n\t" + str(self.ttd_order) + "\n" + \
             "- ttd_aij............:\n\t" + str(self.ttd_aij) + "\n" + \
             "- ttd_bij............:\n\t" + str(self.ttd_bij) + "\n" + \
+            "- wpoly_initial......:\n\t" + str(self.wpoly_initial) + "\n" + \
+            "- wpoly_refined......:\n\t" + str(self.wpoly_refined) + "\n" + \
             "- debugplot...................: " + \
                  str(self.debugplot)
 
@@ -1160,8 +1185,11 @@ def main(args=None):
     # parse command-line options
     parser = argparse.ArgumentParser(prog='test')
     # required arguments
-    parser.add_argument("fitsfile",
-                        help="FITS file",
+    parser.add_argument("fitsfile_odd",
+                        help="FITS file with odd-numbered slitlets",
+                        type=argparse.FileType('r'))
+    parser.add_argument("fitsfile_even",
+                        help="FITS file with even-numbered slitlets",
                         type=argparse.FileType('r'))
     parser.add_argument("--tuple_slit_numbers", required=True,
                         help="Tuple n1[,n2[,step]] to define slitlet numbers")
@@ -1179,8 +1207,8 @@ def main(args=None):
     # optional arguments
     parser.add_argument("--debugplot",
                         help="Integer indicating plotting & debugging options"
-                             " (default=12)",
-                        default=12, type=int,
+                             " (default=0)",
+                        default=0, type=int,
                         choices=DEBUGPLOT_CODES)
     parser.add_argument("--echo",
                         help="Display full command line",
@@ -1214,15 +1242,35 @@ def main(args=None):
         raise ValueError("Invalid step <= 0")
     list_slitlets = range(n1, n2 + 1, step)
 
-    csu_conf = CsuConfiguration()
-    csu_conf.define_from_fits(args.fitsfile)
-    print(csu_conf)
-    pause_debugplot(args.debugplot)
+    # read the CSU configuration from the two initial FITS files and merge
+    # the corresponding configurations in a single one containing the
+    # the information corresponding to the odd- and even-numbered slitlets
+    # accordingly
+    csu_conf_odd = CsuConfiguration()
+    csu_conf_odd.define_from_fits(args.fitsfile_odd)
+    csu_conf_even = CsuConfiguration()
+    csu_conf_even.define_from_fits(args.fitsfile_even)
+    csu_conf = merge_odd_even_csu_configurations(csu_conf_odd, csu_conf_even)
+    if abs(args.debugplot) >= 10:
+        print(csu_conf)
+        pause_debugplot(args.debugplot)
 
-    dtu_conf = DtuConfiguration()
-    dtu_conf.define_from_fits(args.fitsfile)
-    print(dtu_conf)
-    pause_debugplot(args.debugplot)
+    # read the DTU configuration from the two initial FITS files and check
+    # that both configurations are identical
+    dtu_conf_odd = DtuConfiguration()
+    dtu_conf_odd.define_from_fits(args.fitsfile_odd)
+    dtu_conf_even = DtuConfiguration()
+    dtu_conf_even.define_from_fits(args.fitsfile_even)
+    if dtu_conf_odd == dtu_conf_even:
+        dtu_conf = deepcopy(dtu_conf_odd)
+        if abs(args.debugplot) >= 10:
+            print(dtu_conf)
+            pause_debugplot(args.debugplot)
+    else:
+        print("--> DTU config. odd-numbered slitlets:\n", dtu_conf_odd)
+        print("--> DTU config. even-numbered slitlets:\n", dtu_conf_even)
+        raise ValueError("DTU configuration from odd-numbered and "
+                         "even-numbered slitlets FITS files are different")
 
     fitted_bound_param = json.loads(open(args.fitted_bound_param.name).read())
     parmodel = fitted_bound_param['meta-info']['parmodel']
@@ -1232,10 +1280,15 @@ def main(args=None):
     params.pretty_print()
     pause_debugplot(args.debugplot)
 
-    # read FITS image
-    hdulist = fits.open(args.fitsfile)
-    image2d = hdulist[0].data
-    hdulist.close()
+    # read FITS image with odd-numbered slitlets
+    hdulist_odd = fits.open(args.fitsfile_odd)
+    image2d_odd = hdulist_odd[0].data
+    hdulist_odd.close()
+
+    # read FITS image with even-numbered slitlets
+    hdulist_even = fits.open(args.fitsfile_even)
+    image2d_even = hdulist_even[0].data
+    hdulist_even.close()
 
     # determine parameters according to grism+filter combination
     grism_name = fitted_bound_param['tags']['grism']
@@ -1314,7 +1367,10 @@ def main(args=None):
                         debugplot=args.debugplot)
 
         # extract 2D image corresponding to the selected slitlet
-        slitlet2d = slt.extract_slitlet2d(image2d)
+        if islitlet % 2 == 0:
+            slitlet2d = slt.extract_slitlet2d(image2d_even)
+        else:
+            slitlet2d = slt.extract_slitlet2d(image2d_odd)
 
         # subtract smooth background computed as follows:
         # - median collapsed spectrum of the whole slitlet2d
@@ -1329,55 +1385,120 @@ def main(args=None):
         # locate unknown arc lines
         slt.locate_unknown_arc_lines(slitlet2d=slitlet2d)
 
-        # compute intersections between spectrum trails and arc lines
-        slt.xy_spectrail_arc_intersections(slitlet2d=slitlet2d)
+        # continue working with current slitlet only if arc lines have
+        # been detected
+        if slt.list_arc_lines is not None:
 
-        # compute rectification transformation
-        slt.estimate_tt_to_rectify(order=2, slitlet2d=slitlet2d)
+            # compute intersections between spectrum trails and arc lines
+            slt.xy_spectrail_arc_intersections(slitlet2d=slitlet2d)
 
-        # rectify image
-        slitlet2d_rect = slt.rectify(slitlet2d, resampling=1)
+            # compute rectification transformation
+            slt.estimate_tt_to_rectify(order=2, slitlet2d=slitlet2d)
 
-        # median spectrum and line peaks from rectified image
-        sp_median, fxpeaks = slt.median_spectrum_from_rectified_image(
-            slitlet2d_rect,
-            sigma_gaussian_filtering=2,
-            nwinwidth_initial=5,
-            nwinwidth_refined=5,
-            times_sigma_threshold=5,
-            npix_avoid_border=6,
-            nbrightlines=nbrightlines
-        )
+            # rectify image
+            slitlet2d_rect = slt.rectify(slitlet2d, resampling=1)
 
-        # perform wavelength calibration
-        solution_wv = wvcal_spectrum(
-            sp=sp_median,
-            fxpeaks=fxpeaks,
-            poly_degree_wfit=args.poldeg_initial,
-            wv_master=wv_master,
-            debugplot=slt.debugplot
-        )
-        pause_debugplot(args.debugplot)
+            # median spectrum and line peaks from rectified image
+            sp_median, fxpeaks = slt.median_spectrum_from_rectified_image(
+                slitlet2d_rect,
+                sigma_gaussian_filtering=2,
+                nwinwidth_initial=5,
+                nwinwidth_refined=5,
+                times_sigma_threshold=5,
+                npix_avoid_border=6,
+                nbrightlines=nbrightlines
+            )
 
-        # refine wavelength calibration
-        poly_initial = np.polynomial.Polynomial(solution_wv.coeff)
-        poly_refined, npoints_eff, residual_std = refine_arccalibration(
-            sp=sp_median,
-            poly_initial=poly_initial,
-            wv_master=wv_master_all,
-            poldeg=args.poldeg_refined,
-            npix=1,
-            debugplot=slt.debugplot
-        )
+            # perform initial wavelength calibration
+            solution_wv = wvcal_spectrum(
+                sp=sp_median,
+                fxpeaks=fxpeaks,
+                poly_degree_wfit=args.poldeg_initial,
+                wv_master=wv_master,
+                debugplot=slt.debugplot
+            )
+            # store initial wavelength calibration polynomial in current
+            # slitlet instance
+            slt.wpoly_initial = np.polynomial.Polynomial(solution_wv.coeff)
+            pause_debugplot(args.debugplot)
+
+            # refine wavelength calibration
+            poly_refined, npoints_eff, residual_std = refine_arccalibration(
+                sp=sp_median,
+                poly_initial=slt.wpoly_initial,
+                wv_master=wv_master_all,
+                poldeg=args.poldeg_refined,
+                npix=1,
+                debugplot=slt.debugplot
+            )
+            # store refined wavelength calibration polynomial in current
+            # slitlet instance
+            slt.wpoly_refined = poly_refined
+
+        # store current slitlet in list of measured slitlets
+        measured_slitlets.append(slt)
 
         if args.debugplot == 0:
             sys.stdout.write('.')
+            print(slt)
             if islitlet == list_slitlets[-1]:
                 sys.stdout.write('\n')
             sys.stdout.flush()
         else:
             pause_debugplot(args.debugplot)
-        measured_slitlets.append(slt)
+
+    # polynomial coefficients
+    for i in range(args.poldeg_refined):
+        xp = []
+        yp = []
+        for slt in measured_slitlets:
+            if slt.wpoly_refined is not None:
+                xp.append(slt.y0_reference)
+                yp.append(slt.wpoly_refined.coef[i])
+        polfit_residuals(
+            x=np.array(xp),
+            y=np.array(yp),
+            deg=2,
+            xlabel='y0_rectified',
+            ylabel='coeff['  + str(i) + ']',
+            debugplot=12
+        )
+
+    # rectification transformation ttd_aij
+    for i in range(6):
+        xp = []
+        yp = []
+        for slt in measured_slitlets:
+            if slt.ttd_aij is not None:
+                xp.append(slt.y0_reference)
+                yp.append(slt.ttd_aij[i])
+        polfit_residuals_with_sigma_rejection(
+            x=np.array(xp),
+            y=np.array(yp),
+            deg=5,
+            times_sigma_reject=5,
+            xlabel='y0_rectified',
+            ylabel='ttd_aij['  + str(i) + ']',
+            debugplot=12
+        )
+
+    # rectification transformation ttd_bij
+    for i in range(6):
+        xp = []
+        yp = []
+        for slt in measured_slitlets:
+            if slt.ttd_aij is not None:
+                xp.append(slt.y0_reference)
+                yp.append(slt.ttd_bij[i])
+        polfit_residuals_with_sigma_rejection(
+            x=np.array(xp),
+            y=np.array(yp),
+            deg=5,
+            times_sigma_reject=5,
+            xlabel='y0_rectified',
+            ylabel='ttd_bij['  + str(i) + ']',
+            debugplot=12
+        )
 
     if abs(args.debugplot) % 10 != 0:
         ax=ximshow_file(args.fitsfile.name, show=False)
