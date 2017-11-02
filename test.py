@@ -1338,11 +1338,11 @@ def main(args=None):
     parser.add_argument("--poldeg_refined", required=True,
                         help="Polynomial degree for refined calibration",
                         type=int)
-    parser.add_argument("--out_rect", required=True,
+    # optional arguments
+    parser.add_argument("--out_rect",
                         help="Rectified but not wavelength calibrated output "
                              "FITS file",
                         type=argparse.FileType('w'))
-    # optional arguments
     parser.add_argument("--debugplot",
                         help="Integer indicating plotting & debugging options"
                              " (default=0)",
@@ -1736,7 +1736,8 @@ def main(args=None):
     if abs(args.debugplot) % 10 != 0:
         ximshow(image2d_rectified, debugplot=12)
 
-    save_ndarray_to_fits(image2d_rectified, args.out_rect, clobber=True)
+    if args.out_rect is not None:
+        save_ndarray_to_fits(image2d_rectified, args.out_rect, clobber=True)
 
     # ------------------------------------------------------------------------
     # TODO:
