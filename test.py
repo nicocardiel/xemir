@@ -1833,8 +1833,17 @@ def main(args=None):
         ximshow(image2d_rectified_wv_refined_smoothed, debugplot=12)
 
     if args.out_rectwv is not None:
-        list_of_arrays = [image2d_rectified_wv_initial,
-                          image2d_rectified_wv_refined,
+        # Save each version of the rectified and wavelength calibrated image
+        # in a different extension of the output file, from the most to the
+        # least reliable method:
+        # 1) wpoly_refined: the most reliable, computed with the maximun
+        #    number of arc lines
+        # 2) wpoly_initial: reliable, computed with the brightest arc lines
+        # 3) wpoly_refined_smoothed: uncertain because we are using the model
+        #    that provides the variation of each wavelength calibration
+        #    polynomial coefficient as a function of the slitlet
+        list_of_arrays = [image2d_rectified_wv_refined,
+                          image2d_rectified_wv_initial,
                           image2d_rectified_wv_refined_smoothed]
         save_ndarray_to_fits(
             array=list_of_arrays,
