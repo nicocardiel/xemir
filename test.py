@@ -1451,9 +1451,11 @@ def main(args=None):
     filter_name = fitted_bound_param['tags']['filter']
     crpix1_enlarged = 1.0  # center of first pixel
     if grism_name == "J" and filter_name == "J":
-        crval1_enlarged = 11000.000  # Angstroms
+        # crval1_enlarged = 11000.000  # Angstroms
+        crval1_enlarged = 11220.0000 # Angstroms
         cdelt1_enlarged = 0.7575  # Angstroms/pixel
-        naxis1_enlarged = 4134  # pixels
+        # naxis1_enlarged = 4134  # pixels
+        naxis1_enlarged = 3400  # pixels
         nbrightlines = [18]
     elif grism_name == "H" and filter_name == "H":
         crval1_enlarged = 14000.000  # Angstroms
@@ -1715,7 +1717,7 @@ def main(args=None):
 
         islitlet = slt.islitlet
 
-        if True: # abs(args.debugplot) >= 10:
+        if abs(args.debugplot) >= 10:
             print(slt)
 
         if islitlet % 10 == 0:
