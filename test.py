@@ -170,6 +170,12 @@ class Slitlet2D(object):
         Refined and smoothed wavelength calibration polynomial,
         providing the wavelength as a function of pixel number (running
         from 1 to NAXIS1), or None (when the fit cannot be obtained).
+    crval1_linear : float
+        CRVAL1 corresponding to a linear wavelength scale computed from
+        wpoly_refined.
+    cdelt1_linear : float
+        CDELT1 corresponding to a linear wavelength scale computed from
+        wpoly_refined.
     debugplot : int
         Debugging level for messages and plots. For details see
         'numina.array.display.pause_debugplot.py'.
@@ -255,6 +261,8 @@ class Slitlet2D(object):
         self.wpoly_initial = None
         self.wpoly_refined = None
         self.wpoly_refined_smoothed = None
+        self.crval1_linear = None
+        self.cdelt1_linear = None
 
         # debugplot
         self.debugplot = debugplot
@@ -345,6 +353,8 @@ class Slitlet2D(object):
             str(self.wpoly_refined) + "\n" + \
             "- wpoly_refined_smoothed:\n\t" + \
             str(self.wpoly_refined_smoothed) + "\n" + \
+            "- crval1_linear.........: " + str(self.crval1_linear) + "\n" + \
+            "- cdelt1_linear.........: " + str(self.cdelt1_linear) + "\n" + \
             "- debugplot...................: " + \
             str(self.debugplot)
 
@@ -1585,6 +1595,13 @@ def main(args=None):
             # store refined wavelength calibration polynomial in current
             # slitlet instance
             slt.wpoly_refined = poly_refined
+            # compute approximate linear values for CRVAL1 and CDELT1
+            naxis1_linear = sp_median.shape[0]
+            crmin1_linear = slt.wpoly_refined(1)
+            crmax1_linear = slt.wpoly_refined(naxis1_linear)
+            slt.crval1_linear = crmin1_linear
+            slt.cdelt1_linear = \
+                (crmax1_linear - crmin1_linear) / (naxis1_linear - 1)
 
         # store current slitlet in list of measured slitlets
         measured_slitlets.append(slt)
@@ -1689,7 +1706,10 @@ def main(args=None):
     # ------------------------------------------------------------------------
 
     image2d_rectified = np.zeros((NAXIS2_EMIR, NAXIS1_EMIR))
-    image2d_rectified_wv = np.zeros((NAXIS2_EMIR, naxis1_enlarged))
+    image2d_rectified_wv_initial = np.zeros((NAXIS2_EMIR, naxis1_enlarged))
+    image2d_rectified_wv_refined = np.zeros((NAXIS2_EMIR, naxis1_enlarged))
+    image2d_rectified_wv_refined_smoothed = \
+        np.zeros((NAXIS2_EMIR, naxis1_enlarged))
 
     for slt in measured_slitlets:
 
@@ -1744,36 +1764,85 @@ def main(args=None):
         image2d_rectified[i1:i2, j1:j2] = slitlet2d_rect[ii1:ii2, :]
 
         # wavelength calibration of rectified image
-        if slt.wpoly_refined is not None:
-            coeff = slt.wpoly_refined.coef
+
+        if slt.wpoly_initial is not None:
+            coeff_initial = slt.wpoly_initial.coef
         elif slt.wpoly_refined_smoothed is not None:
-            coeff = slt.wpoly_refined_smoothed.coef
+            coeff_initial = slt.wpoly_refined_smoothed.coef
         else:
             raise ValueError("No wavelength calibration polynomial defined!")
 
-        slitlet2d_rect_wv = resample_image2d_flux(
+        if slt.wpoly_refined is not None:
+            coeff_refined = slt.wpoly_refined.coef
+        elif slt.wpoly_refined_smoothed is not None:
+            coeff_refined = slt.wpoly_refined_smoothed.coef
+        else:
+            raise ValueError("No wavelength calibration polynomial defined!")
+
+        if slt.wpoly_refined_smoothed is not None:
+            coeff_refined_smoothed = slt.wpoly_refined_smoothed.coef
+        else:
+            raise ValueError("No wavelength calibration polynomial defined!")
+
+        slitlet2d_rect_wv_initial = resample_image2d_flux(
             image2d_orig=slitlet2d_rect,
             naxis1=naxis1_enlarged,
             cdelt1=cdelt1_enlarged,
             crval1=crval1_enlarged,
             crpix1=crpix1_enlarged,
-            coeff=coeff
+            coeff=coeff_initial
         )
+        image2d_rectified_wv_initial[i1:i2, :] = \
+            slitlet2d_rect_wv_initial[ii1:ii2, :]
 
-        image2d_rectified_wv[i1:i2, :] = slitlet2d_rect_wv[ii1:ii2, :]
+        slitlet2d_rect_wv_refined = resample_image2d_flux(
+            image2d_orig=slitlet2d_rect,
+            naxis1=naxis1_enlarged,
+            cdelt1=cdelt1_enlarged,
+            crval1=crval1_enlarged,
+            crpix1=crpix1_enlarged,
+            coeff=coeff_refined
+        )
+        image2d_rectified_wv_refined[i1:i2, :] = \
+            slitlet2d_rect_wv_refined[ii1:ii2, :]
+
+        slitlet2d_rect_wv_refined_smoothed = resample_image2d_flux(
+            image2d_orig=slitlet2d_rect,
+            naxis1=naxis1_enlarged,
+            cdelt1=cdelt1_enlarged,
+            crval1=crval1_enlarged,
+            crpix1=crpix1_enlarged,
+            coeff=coeff_refined_smoothed
+        )
+        image2d_rectified_wv_refined_smoothed[i1:i2, :] = \
+            slitlet2d_rect_wv_refined_smoothed[ii1:ii2, :]
 
     if abs(args.debugplot) % 10 != 0:
         ximshow(image2d_rectified, debugplot=12)
 
     if args.out_rect is not None:
-        save_ndarray_to_fits(image2d_rectified, args.out_rect, clobber=True)
+        save_ndarray_to_fits(
+            array=image2d_rectified,
+            file_name=args.out_rect,
+            overwrite=True
+        )
 
     if abs(args.debugplot) % 10 != 0:
-        ximshow(image2d_rectified_wv, debugplot=12)
+        ximshow(image2d_rectified_wv_refined_smoothed, debugplot=12)
 
     if args.out_rectwv is not None:
-        save_ndarray_to_fits(image2d_rectified_wv, args.out_rectwv,
-                             clobber=True)
+        list_of_arrays = [image2d_rectified_wv_initial,
+                          image2d_rectified_wv_refined,
+                          image2d_rectified_wv_refined_smoothed]
+        save_ndarray_to_fits(
+            array=list_of_arrays,
+            file_name=args.out_rectwv,
+            cast_to_float=[True]*3,
+            crpix1=[crpix1_enlarged]*3,
+            crval1=[crval1_enlarged]*3,
+            cdelt1=[cdelt1_enlarged]*3,
+            overwrite=True
+        )
 
     # ------------------------------------------------------------------------
     # TODO:
