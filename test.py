@@ -23,6 +23,7 @@ from numina.array.wavecalib.__main__ import wvcal_spectrum
 from numina.array.wavecalib.arccalibration import refine_arccalibration
 from numina.array.wavecalib.peaks_spectrum import find_peaks_spectrum
 from numina.array.wavecalib.peaks_spectrum import refine_peaks_spectrum
+from numina.array.wavecalib.resample import resample_image2d_flux
 
 from emirdrp.core import EMIR_NBARS
 
@@ -1338,9 +1339,14 @@ def main(args=None):
     parser.add_argument("--poldeg_refined", required=True,
                         help="Polynomial degree for refined calibration",
                         type=int)
+
     # optional arguments
     parser.add_argument("--out_rect",
                         help="Rectified but not wavelength calibrated output "
+                             "FITS file",
+                        type=argparse.FileType('w'))
+    parser.add_argument("--out_rectwv",
+                        help="Rectified and wavelength calibrated output "
                              "FITS file",
                         type=argparse.FileType('w'))
     parser.add_argument("--debugplot",
@@ -1683,10 +1689,14 @@ def main(args=None):
     # ------------------------------------------------------------------------
 
     image2d_rectified = np.zeros((NAXIS2_EMIR, NAXIS1_EMIR))
+    image2d_rectified_wv = np.zeros((NAXIS2_EMIR, naxis1_enlarged))
 
     for slt in measured_slitlets:
 
         islitlet = slt.islitlet
+
+        if True: # abs(args.debugplot) >= 10:
+            print(slt)
 
         if islitlet % 10 == 0:
             cout = str(islitlet // 10)
@@ -1705,7 +1715,7 @@ def main(args=None):
             raise ValueError("nscan_min=" + str(nscan_max) +
                              " is > NAXIS2_EMIR=" + str(NAXIS2_EMIR))
 
-        # extract 2D image corresponding to the selected slitlet
+        # extract original 2D image corresponding to the selected slitlet
         if islitlet % 2 == 0:
             slitlet2d = slt.extract_slitlet2d(image2d_even)
         else:
@@ -1733,11 +1743,37 @@ def main(args=None):
 
         image2d_rectified[i1:i2, j1:j2] = slitlet2d_rect[ii1:ii2, :]
 
+        # wavelength calibration of rectified image
+        if slt.wpoly_refined is not None:
+            coeff = slt.wpoly_refined.coef
+        elif slt.wpoly_refined_smoothed is not None:
+            coeff = slt.wpoly_refined_smoothed.coef
+        else:
+            raise ValueError("No wavelength calibration polynomial defined!")
+
+        slitlet2d_rect_wv = resample_image2d_flux(
+            image2d_orig=slitlet2d_rect,
+            naxis1=naxis1_enlarged,
+            cdelt1=cdelt1_enlarged,
+            crval1=crval1_enlarged,
+            crpix1=crpix1_enlarged,
+            coeff=coeff
+        )
+
+        image2d_rectified_wv[i1:i2, :] = slitlet2d_rect_wv[ii1:ii2, :]
+
     if abs(args.debugplot) % 10 != 0:
         ximshow(image2d_rectified, debugplot=12)
 
     if args.out_rect is not None:
         save_ndarray_to_fits(image2d_rectified, args.out_rect, clobber=True)
+
+    if abs(args.debugplot) % 10 != 0:
+        ximshow(image2d_rectified_wv, debugplot=12)
+
+    if args.out_rectwv is not None:
+        save_ndarray_to_fits(image2d_rectified_wv, args.out_rectwv,
+                             clobber=True)
 
     # ------------------------------------------------------------------------
     # TODO:
