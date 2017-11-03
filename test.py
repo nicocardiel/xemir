@@ -1457,7 +1457,7 @@ def main(args=None):
     crpix1_enlarged = 1.0  # center of first pixel
     if grism_name == "J" and filter_name == "J":
         # crval1_enlarged = 11000.000  # Angstroms
-        crval1_enlarged = 11220.0000 # Angstroms
+        crval1_enlarged = 11220.0000  # Angstroms
         cdelt1_enlarged = 0.7575  # Angstroms/pixel
         # naxis1_enlarged = 4134  # pixels
         naxis1_enlarged = 3400  # pixels
@@ -1878,13 +1878,12 @@ def main(args=None):
 
     for slt in measured_slitlets:
 
-        # print(slt)    # ToDo: remove these two lines
-        # raw_input("Stop here")
-
         islitlet = slt.islitlet
 
         # avoid error when creating a python list of coefficients from
-        # numpy polynomials when the polynomials do not exist
+        # numpy polynomials when the polynomials do not exist (note that the
+        # JSON format doesn't handle numpy arrays and such arrays must be
+        # transformed into native python lists)
         if slt.wpoly_initial is None:
             wpoly_initial_coeff = None
         else:
@@ -1901,7 +1900,7 @@ def main(args=None):
         # avoid similar error when creating a python list of coefficients
         # when the numpy array does not exist; note that this problem
         # does not happen with ttd_aij_modeled and ttd_bij_modeled because
-        # the latter are already python lists
+        # the latter have already been created as native python lists
         if slt.ttd_aij is None:
             ttd_aij = None
         else:
@@ -1911,6 +1910,8 @@ def main(args=None):
         else:
             ttd_bij = slt.ttd_bij.tolist()
 
+        # creating temporary dictionary with the information corresponding to
+        # the current slitlett that will be saved in the JSON file
         tmp_dict = {
             'csu_bar_left': slt.csu_bar_left,
             'csu_bar_right': slt.csu_bar_right,
@@ -1959,31 +1960,6 @@ def main(args=None):
     with open(args.out_json.name, 'w') as fstream:
         json.dump(outdict, fstream, indent=2, sort_keys=True)
         print('>>> Saving file ' + args.out_json.name)
-
-    # ------------------------------------------------------------------------
-    # Note that the following code does not have sense since now the program
-    # reads two FITS files with odd- and even-numbered slitlets. In fact,
-    # args.fitsfile does not exist.
-    """
-    if abs(args.debugplot) % 10 != 0:
-        ax = ximshow_file(args.fitsfile.name, show=False)
-        for slt in measured_slitlets:
-            xdum = np.linspace(1, NAXIS1_EMIR, num=NAXIS1_EMIR)
-            ylower = \
-                slt.list_spectrails[slt.i_lower_spectrail].poly_funct(xdum)
-            ax.plot(xdum, ylower, 'b-')
-            yupper = \
-                slt.list_spectrails[slt.i_upper_spectrail].poly_funct(xdum)
-            ax.plot(xdum, yupper, 'b-')
-            if slt.list_arc_lines is not None:
-                for arcline in slt.list_arc_lines:
-                    xdum, ydum = arcline.linspace_pix(
-                        start=arcline.ylower_line,
-                        stop=arcline.yupper_line
-                    )
-                    ax.plot(xdum, ydum, 'g-')
-        pause_debugplot(args.debugplot, pltshow=True)
-    """
 
 
 if __name__ == "__main__":
