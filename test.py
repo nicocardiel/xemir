@@ -1870,6 +1870,8 @@ def main(args=None):
     outdict['tags'] = {}
     outdict['tags']['grism'] = grism_name
     outdict['tags']['filter'] = filter_name
+    outdict['tags']['islitlet_min'] = islitlet_min
+    outdict['tags']['islitlet_max'] = islitlet_max
     outdict['uuid'] = str(uuid4())
     outdict['contents'] = {}
 
