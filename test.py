@@ -1334,8 +1334,6 @@ def main(args=None):
     parser.add_argument("fitsfile_even",
                         help="FITS file with even-numbered slitlets",
                         type=argparse.FileType('r'))
-    parser.add_argument("--tuple_slit_numbers", required=True,
-                        help="Tuple n1[,n2[,step]] to define slitlet numbers")
     parser.add_argument("--fitted_bound_param", required=True,
                         help="Input JSON with fitted boundary parameters",
                         type=argparse.FileType('r'))
@@ -1378,30 +1376,6 @@ def main(args=None):
         print('\033[1m\033[31m% ' + ' '.join(sys.argv) + '\033[0m\n')
 
     # ------------------------------------------------------------------------
-
-    # read slitlet numbers to be computed
-    tmp_str = args.tuple_slit_numbers.split(",")
-    if len(tmp_str) == 3:
-        n1 = int(tmp_str[0])
-        n2 = int(tmp_str[1])
-        step = int(tmp_str[2])
-    elif len(tmp_str) == 2:
-        n1 = int(tmp_str[0])
-        n2 = int(tmp_str[1])
-        step = 1
-    elif len(tmp_str) == 1:
-        n1 = int(tmp_str[0])
-        n2 = n1
-        step = 1
-    else:
-        raise ValueError("Invalid tuple for slitlet numbers")
-    if n1 < 1:
-        raise ValueError("Invalid slitlet number < 1")
-    if n2 > EMIR_NBARS:
-        raise ValueError("Invalid slitlet number > EMIR_NBARS")
-    if step <= 0:
-        raise ValueError("Invalid step <= 0")
-    list_slitlets = range(n1, n2 + 1, step)
 
     # read the CSU configuration from the two initial FITS files and merge
     # the corresponding configurations in a single one containing the
@@ -1456,6 +1430,8 @@ def main(args=None):
     filter_name = fitted_bound_param['tags']['filter']
     crpix1_enlarged = 1.0  # center of first pixel
     if grism_name == "J" and filter_name == "J":
+        islitlet_min = 2
+        islitlet_max = 54
         # crval1_enlarged = 11000.000  # Angstroms
         crval1_enlarged = 11220.0000  # Angstroms
         cdelt1_enlarged = 0.7575  # Angstroms/pixel
@@ -1463,27 +1439,40 @@ def main(args=None):
         naxis1_enlarged = 3400  # pixels
         nbrightlines = [18]
     elif grism_name == "H" and filter_name == "H":
+        islitlet_min = 0
+        islitlet_max = 0
         crval1_enlarged = 14000.000  # Angstroms
         cdelt1_enlarged = 1.2000  # Angstroms/pixel
         naxis1_enlarged = 4134  # pixels
         nbrightlines = [0]
     elif grism_name == "K" and filter_name == "Ksp":
+        islitlet_min = 0
+        islitlet_max = 0
         crval1_enlarged = 19000.000  # Angstroms
         cdelt1_enlarged = 1.7000  # Angstroms/pixel
         naxis1_enlarged = 4134  # pixels
         nbrightlines = [0]
     elif grism_name == "LR" and filter_name == "YJ":
+        islitlet_min = 0
+        islitlet_max = 0
         crval1_enlarged = None  # Angstroms
         cdelt1_enlarged = None  # Angstroms/pixel
         naxis1_enlarged = None  # pixels
         nbrightlines = None
     elif grism_name == "LR" and filter_name == "HK":
+        islitlet_min = 0
+        islitlet_max = 0
         crval1_enlarged = None  # Angstroms
         cdelt1_enlarged = None  # Angstroms/pixel
         naxis1_enlarged = None  # pixels
         nbrightlines = None
     else:
         raise ValueError("invalid grism_name and/or filter_name")
+
+    # list of slitlets to be computed
+    list_slitlets = range(islitlet_min, islitlet_max + 1)
+
+    # expected wavelength coverage of the rectified image
     crmin1_enlarged = \
         crval1_enlarged + \
         (1.0 - crpix1_enlarged) * \
@@ -1870,6 +1859,9 @@ def main(args=None):
         'wavelength calibration polynomials and rectification ' \
         'coefficients for a particular longslit'
     outdict['meta-info']['recipe_name'] = 'undefined'
+    outdict['meta-info']['origin'] = {}
+    outdict['meta-info']['origin']['fitted_bound_param_uuid'] = \
+        fitted_bound_param['uuid']
     outdict['tags'] = {}
     outdict['tags']['grism'] = grism_name
     outdict['tags']['filter'] = filter_name
