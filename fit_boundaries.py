@@ -1070,8 +1070,10 @@ def main(args=None):
             = "fitted boundary parameters"
         fitted_bound_param['meta-info']['function_evaluations'] = result.nfev
         fitted_bound_param['meta-info']['global_residual'] = global_residual
-        fitted_bound_param['meta-info']['uuid_bounddict'] = bounddict['uuid']
-        fitted_bound_param['meta-info']['uuid_init_bound_param'] = \
+        fitted_bound_param['meta-info']['origin'] = {}
+        fitted_bound_param['meta-info']['origin']['bounddict_uuid'] = \
+            bounddict['uuid']
+        fitted_bound_param['meta-info']['origin']['init_bound_param_uuid'] = \
             init_bound_param['uuid']
         fitted_bound_param['uuid'] = str(uuid4())
         for mainpar in EXPECTED_PARAMETER_LIST:
