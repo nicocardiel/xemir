@@ -23,3 +23,9 @@ alias EMIR_slitlet_boundaries_from_continuum=\
 # test script
 alias EMIR_test=\
 'python ~/s/xemir/test.py'
+
+# compute wavelength calibration polynomials and rectification transformation
+# from longslits observed with odd-numbered and even-numbered slitlets
+alias EMIR_wpoly_from_longslit=\
+'python ~/s/xemir/wpoly_from_longslit.py'
+
