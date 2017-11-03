@@ -4,6 +4,7 @@ from __future__ import print_function
 import argparse
 from astropy.io import fits
 from copy import deepcopy
+from datetime import datetime
 import json
 from matplotlib.patches import Rectangle
 import numpy as np
@@ -12,6 +13,7 @@ from scipy.signal import medfilt
 from skimage import restoration
 from skimage import transform
 import sys
+from uuid import uuid4
 
 from numina.array.display.polfit_residuals import \
     polfit_residuals_with_sigma_rejection
@@ -146,15 +148,15 @@ class Slitlet2D(object):
     ttd_bij : numpy array
         Polynomial coefficents corresponding to the rectification
         transformation coefficients b_ij.
-    ttd_order_smoothed : int or None
-        Polynomial order corresponding to the smoothed rectification
+    ttd_order_modeled : int or None
+        Polynomial order corresponding to the modeled rectification
         transformation. It is None until the coefficients
-        ttd_aij_smoothed and ttd_bij_smoothed have been computed.
-    ttd_aij_smoothed : numpy array
+        ttd_aij_modeled and ttd_bij_modeled have been computed.
+    ttd_aij_modeled : numpy array
         Polynomial coefficents corresponding to the rectification
         transformation coefficients a_ij interpolated with a smooth
         polynomial variation as a function of y0_reference_middle.
-    ttd_bij_smoothed : numpy array
+    ttd_bij_modeled : numpy array
         Polynomial coefficents corresponding to the rectification
         transformation coefficients b_ij interpolated with a smooth
         polynomial variation as a function of y0_reference_middle.
@@ -166,8 +168,8 @@ class Slitlet2D(object):
         Refined wavelength calibration polynomial, providing the
         wavelength as a function of pixel number (running from 1 to
         NAXIS1), or None (when the fit cannot be obtained).
-    wpoly_refined_smoothed : Polynomial instance
-        Refined and smoothed wavelength calibration polynomial,
+    wpoly_refined_modeled : Polynomial instance
+        Refined and modeled wavelength calibration polynomial,
         providing the wavelength as a function of pixel number (running
         from 1 to NAXIS1), or None (when the fit cannot be obtained).
     crval1_linear : float
@@ -255,12 +257,12 @@ class Slitlet2D(object):
         self.ttd_order = None
         self.ttd_aij = None
         self.ttd_bij = None
-        self.ttd_order_smoothed = None
-        self.ttd_aij_smoothed = None
-        self.ttd_bij_smoothed = None
+        self.ttd_order_modeled = None
+        self.ttd_aij_modeled = None
+        self.ttd_bij_modeled = None
         self.wpoly_initial = None
         self.wpoly_refined = None
-        self.wpoly_refined_smoothed = None
+        self.wpoly_modeledd = None
         self.crval1_linear = None
         self.cdelt1_linear = None
 
@@ -341,20 +343,20 @@ class Slitlet2D(object):
             "- ttd_order..........: " + str(self.ttd_order) + "\n" + \
             "- ttd_aij............:\n\t" + str(self.ttd_aij) + "\n" + \
             "- ttd_bij............:\n\t" + str(self.ttd_bij) + "\n" + \
-            "- ttd_order_smoothed.: " + \
-            str(self.ttd_order_smoothed) + "\n" + \
-            "- ttd_aij_smoothed...:\n\t" + \
-            str(self.ttd_aij_smoothed) + "\n" + \
-            "- ttd_bij_smoothed...:\n\t" + \
-            str(self.ttd_bij_smoothed) + "\n" + \
-            "- wpoly_initial.........:\n\t" + \
+            "- ttd_order_modeled..: " + \
+            str(self.ttd_order_modeled) + "\n" + \
+            "- ttd_aij_modeled....:\n\t" + \
+            str(self.ttd_aij_modeled) + "\n" + \
+            "- ttd_bij_modeled....:\n\t" + \
+            str(self.ttd_bij_modeled) + "\n" + \
+            "- wpoly_initial......:\n\t" + \
             str(self.wpoly_initial) + "\n" + \
-            "- wpoly_refined.........:\n\t" + \
+            "- wpoly_refined......:\n\t" + \
             str(self.wpoly_refined) + "\n" + \
-            "- wpoly_refined_smoothed:\n\t" + \
-            str(self.wpoly_refined_smoothed) + "\n" + \
-            "- crval1_linear.........: " + str(self.crval1_linear) + "\n" + \
-            "- cdelt1_linear.........: " + str(self.cdelt1_linear) + "\n" + \
+            "- wpoly_modeled......:\n\t" + \
+            str(self.wpoly_modeled) + "\n" + \
+            "- crval1_linear......: " + str(self.crval1_linear) + "\n" + \
+            "- cdelt1_linear......: " + str(self.cdelt1_linear) + "\n" + \
             "- debugplot...................: " + \
             str(self.debugplot)
 
@@ -961,7 +963,7 @@ class Slitlet2D(object):
         resampling : int
             1: nearest neighbour, 2: flux preserving interpolation.
         transformation : int
-            1: initial, 2: smoothed
+            1: initial, 2: modeled
 
         Returns
         -------
@@ -1001,9 +1003,9 @@ class Slitlet2D(object):
                                 self.ttd_bij,
                                 xx, yy)
             else:
-                xxx, yyy = fmap(self.ttd_order_smoothed,
-                                self.ttd_aij_smoothed,
-                                self.ttd_bij_smoothed,
+                xxx, yyy = fmap(self.ttd_order_modeled,
+                                self.ttd_aij_modeled,
+                                self.ttd_bij_modeled,
                                 xx, yy)
             # round to nearest integer and cast to integer; note that the
             # rounding still provides a float, so the casting is required
@@ -1349,6 +1351,9 @@ def main(args=None):
     parser.add_argument("--poldeg_refined", required=True,
                         help="Polynomial degree for refined calibration",
                         type=int)
+    parser.add_argument("--out_json", required=True,
+                        help="Output JSON file with results",
+                        type=argparse.FileType('w'))
 
     # optional arguments
     parser.add_argument("--out_rect",
@@ -1653,7 +1658,7 @@ def main(args=None):
         for i in range(args.poldeg_refined + 1):
             new_coeff = list_poly[i](y0_reference_middle)
             list_new_coeff.append(new_coeff)
-        slt.wpoly_refined_smoothed = np.polynomial.Polynomial(list_new_coeff)
+        slt.wpoly_modeled = np.polynomial.Polynomial(list_new_coeff)
 
     # ------------------------------------------------------------------------
 
@@ -1695,23 +1700,22 @@ def main(args=None):
     # step 2: use the variation of each coefficient with y0_reference_middle
     # to infer the expected rectification transformation for each slitlet
     for slt in measured_slitlets:
-        slt.ttd_order_smoothed = args.order_fmap
+        slt.ttd_order_modeled = args.order_fmap
         y0_reference_middle = slt.y0_reference_middle
-        slt.ttd_aij_smoothed = []
-        slt.ttd_bij_smoothed = []
+        slt.ttd_aij_modeled = []
+        slt.ttd_bij_modeled = []
         for i in range(ncoef_ttd):
             new_coeff_aij = list_poly_aij[i](y0_reference_middle)
-            slt.ttd_aij_smoothed.append(new_coeff_aij)
+            slt.ttd_aij_modeled.append(new_coeff_aij)
             new_coeff_bij = list_poly_bij[i](y0_reference_middle)
-            slt.ttd_bij_smoothed.append(new_coeff_bij)
+            slt.ttd_bij_modeled.append(new_coeff_bij)
 
     # ------------------------------------------------------------------------
 
     image2d_rectified = np.zeros((NAXIS2_EMIR, NAXIS1_EMIR))
     image2d_rectified_wv_initial = np.zeros((NAXIS2_EMIR, naxis1_enlarged))
     image2d_rectified_wv_refined = np.zeros((NAXIS2_EMIR, naxis1_enlarged))
-    image2d_rectified_wv_refined_smoothed = \
-        np.zeros((NAXIS2_EMIR, naxis1_enlarged))
+    image2d_rectified_wv_modeled = np.zeros((NAXIS2_EMIR, naxis1_enlarged))
 
     for slt in measured_slitlets:
 
@@ -1746,7 +1750,7 @@ def main(args=None):
         # rectify image
         if slt.ttd_order is not None:
             transformation = 1
-        elif slt.ttd_order_smoothed is not None:
+        elif slt.ttd_order_modeled is not None:
             transformation = 2
         else:
             raise ValueError("No ttd transformation defined!")
@@ -1769,20 +1773,20 @@ def main(args=None):
 
         if slt.wpoly_initial is not None:
             coeff_initial = slt.wpoly_initial.coef
-        elif slt.wpoly_refined_smoothed is not None:
-            coeff_initial = slt.wpoly_refined_smoothed.coef
+        elif slt.wpoly_modeled is not None:
+            coeff_initial = slt.wpoly_modeled.coef
         else:
             raise ValueError("No wavelength calibration polynomial defined!")
 
         if slt.wpoly_refined is not None:
             coeff_refined = slt.wpoly_refined.coef
-        elif slt.wpoly_refined_smoothed is not None:
-            coeff_refined = slt.wpoly_refined_smoothed.coef
+        elif slt.wpoly_modeled is not None:
+            coeff_refined = slt.wpoly_modeled.coef
         else:
             raise ValueError("No wavelength calibration polynomial defined!")
 
-        if slt.wpoly_refined_smoothed is not None:
-            coeff_refined_smoothed = slt.wpoly_refined_smoothed.coef
+        if slt.wpoly_modeled is not None:
+            coeff_modeled = slt.wpoly_modeled.coef
         else:
             raise ValueError("No wavelength calibration polynomial defined!")
 
@@ -1808,16 +1812,16 @@ def main(args=None):
         image2d_rectified_wv_refined[i1:i2, :] = \
             slitlet2d_rect_wv_refined[ii1:ii2, :]
 
-        slitlet2d_rect_wv_refined_smoothed = resample_image2d_flux(
+        slitlet2d_rect_wv_modeled = resample_image2d_flux(
             image2d_orig=slitlet2d_rect,
             naxis1=naxis1_enlarged,
             cdelt1=cdelt1_enlarged,
             crval1=crval1_enlarged,
             crpix1=crpix1_enlarged,
-            coeff=coeff_refined_smoothed
+            coeff=coeff_modeled
         )
-        image2d_rectified_wv_refined_smoothed[i1:i2, :] = \
-            slitlet2d_rect_wv_refined_smoothed[ii1:ii2, :]
+        image2d_rectified_wv_modeled[i1:i2, :] = \
+            slitlet2d_rect_wv_modeled[ii1:ii2, :]
 
     if abs(args.debugplot) % 10 != 0:
         ximshow(image2d_rectified, debugplot=12)
@@ -1830,7 +1834,7 @@ def main(args=None):
         )
 
     if abs(args.debugplot) % 10 != 0:
-        ximshow(image2d_rectified_wv_refined_smoothed, debugplot=12)
+        ximshow(image2d_rectified_wv_modeled, debugplot=12)
 
     if args.out_rectwv is not None:
         # Save each version of the rectified and wavelength calibrated image
@@ -1839,12 +1843,12 @@ def main(args=None):
         # 1) wpoly_refined: the most reliable, computed with the maximun
         #    number of arc lines
         # 2) wpoly_initial: reliable, computed with the brightest arc lines
-        # 3) wpoly_refined_smoothed: uncertain because we are using the model
+        # 3) wpoly_modeled: uncertain because we are using the model
         #    that provides the variation of each wavelength calibration
         #    polynomial coefficient as a function of the slitlet
         list_of_arrays = [image2d_rectified_wv_refined,
                           image2d_rectified_wv_initial,
-                          image2d_rectified_wv_refined_smoothed]
+                          image2d_rectified_wv_modeled]
         save_ndarray_to_fits(
             array=list_of_arrays,
             file_name=args.out_rectwv,
@@ -1856,13 +1860,107 @@ def main(args=None):
         )
 
     # ------------------------------------------------------------------------
-    # TODO:
-    # (1) rectify each slitlet and generate a rectified and wavelength
-    #     calibrated image with all the slitlets
-    # (2) save relevant results in JSON file:
-    #     - wavelength calibration polynomial for each rectified slitlet
-    #       (initial, refined, and refined_smoothed)
 
+    # Generated structure to save results into an ouptut JSON file
+    outdict = {}
+    outdict['instrument'] = 'EMIR'
+    outdict['meta-info'] = {}
+    outdict['meta-info']['creation_date'] = datetime.now().isoformat()
+    outdict['meta-info']['description'] = \
+        'wavelength calibration polynomials and rectification ' \
+        'coefficients for a particular longslit'
+    outdict['meta-info']['recipe_name'] = 'undefined'
+    outdict['tags'] = {}
+    outdict['tags']['grism'] = grism_name
+    outdict['tags']['filter'] = filter_name
+    outdict['uuid'] = str(uuid4())
+    outdict['contents'] = {}
+
+    for slt in measured_slitlets:
+
+        # print(slt)    # ToDo: remove these two lines
+        # raw_input("Stop here")
+
+        islitlet = slt.islitlet
+
+        # avoid error when creating a python list of coefficients from
+        # numpy polynomials when the polynomials do not exist
+        if slt.wpoly_initial is None:
+            wpoly_initial_coeff = None
+        else:
+            wpoly_initial_coeff = slt.wpoly_initial.coef.tolist()
+        if slt.wpoly_refined is None:
+            wpoly_refined_coeff = None
+        else:
+            wpoly_refined_coeff = slt.wpoly_refined.coef.tolist()
+        if slt.wpoly_modeled is None:
+            wpoly_modeled_coeff = None
+        else:
+            wpoly_modeled_coeff = slt.wpoly_modeled.coef.tolist()
+
+        # avoid similar error when creating a python list of coefficients
+        # when the numpy array does not exist; note that this problem
+        # does not happen with ttd_aij_modeled and ttd_bij_modeled because
+        # the latter are already python lists
+        if slt.ttd_aij is None:
+            ttd_aij = None
+        else:
+            ttd_aij = slt.ttd_aij.tolist()
+        if slt.ttd_bij is None:
+            ttd_bij = None
+        else:
+            ttd_bij = slt.ttd_bij.tolist()
+
+        tmp_dict = {
+            'csu_bar_left': slt.csu_bar_left,
+            'csu_bar_right': slt.csu_bar_right,
+            'csu_bar_slit_center': slt.csu_bar_slit_center,
+            'csu_bar_slit_width': slt.csu_bar_slit_width,
+            'x0_reference': slt.x0_reference,
+            'y0_reference_lower': slt.y0_reference_lower,
+            'y0_reference_middle': slt.y0_reference_middle,
+            'y0_reference_upper': slt.y0_reference_upper,
+            'y0_frontier_lower': slt.y0_frontier_lower,
+            'y0_frontier_upper': slt.y0_frontier_upper,
+            'bb_nc1_orig': slt.bb_nc1_orig,
+            'bb_nc2_orig': slt.bb_nc2_orig,
+            'bb_ns1_orig': slt.bb_ns1_orig,
+            'bb_ns2_orig': slt.bb_ns2_orig,
+            'lower_spectrail_poly_coeff':
+                slt.list_spectrails[
+                    slt.i_lower_spectrail].poly_funct.coef.tolist(),
+            'middle_spectrail.poly_funct':
+                slt.list_spectrails[
+                    slt.i_middle_spectrail].poly_funct.coef.tolist(),
+            'upper_spectrail.poly_funct':
+                slt.list_spectrails[
+                    slt.i_upper_spectrail].poly_funct.coef.tolist(),
+            'lower_frontier.poly_funct':
+                slt.list_frontiers[0].poly_funct.coef.tolist(),
+            'upper_frontier.poly_funct':
+                slt.list_frontiers[1].poly_funct.coef.tolist(),
+            'ttd_order': slt.ttd_order,
+            'ttd_aij': ttd_aij,
+            'ttd_bij': ttd_bij,
+            'ttd_order_modeled': slt.ttd_order_modeled,
+            'ttd_aij_modeled': slt.ttd_aij_modeled,
+            'ttd_bij_modeled': slt.ttd_bij_modeled,
+            'wpoly_initial_coeff': wpoly_initial_coeff,
+            'wpoly_refined_coeff': wpoly_refined_coeff,
+            'wpoly_modeled_coeff': wpoly_modeled_coeff,
+            'crval1_linear': slt.crval1_linear,
+            'cdelt1_linear': slt.cdelt1_linear
+        }
+
+        slitlet_label = "slitlet" + str(islitlet).zfill(2)
+        outdict['contents'][slitlet_label] = tmp_dict
+
+    # save JSON file
+    with open(args.out_json.name, 'w') as fstream:
+        json.dump(outdict, fstream, indent=2, sort_keys=True)
+        print('>>> Saving file ' + args.out_json.name)
+
+    # ------------------------------------------------------------------------
     # Note that the following code does not have sense since now the program
     # reads two FITS files with odd- and even-numbered slitlets. In fact,
     # args.fitsfile does not exist.
