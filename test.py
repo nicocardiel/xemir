@@ -1862,6 +1862,11 @@ def main(args=None):
     outdict['meta-info']['origin'] = {}
     outdict['meta-info']['origin']['fitted_bound_param_uuid'] = \
         fitted_bound_param['uuid']
+    outdict['meta-info']['origin']['frames'] = {}
+    outdict['meta-info']['origin']['frames']['odd_numbered_slits_uuid'] = \
+        'undefined'
+    outdict['meta-info']['origin']['frames']['even_numbered_slits_uuid'] = \
+        'undefined'
     outdict['tags'] = {}
     outdict['tags']['grism'] = grism_name
     outdict['tags']['filter'] = filter_name
