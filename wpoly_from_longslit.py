@@ -21,14 +21,13 @@ from numina.array.display.ximplotxy import ximplotxy
 from numina.array.display.ximshow import ximshow
 from numina.array.distortion import compute_distortion
 from numina.array.distortion import fmap
+from numina.array.distortion import ncoef_fmap
 from numina.array.wavecalib.__main__ import read_wv_master_file
 from numina.array.wavecalib.__main__ import wvcal_spectrum
 from numina.array.wavecalib.arccalibration import refine_arccalibration
 from numina.array.wavecalib.peaks_spectrum import find_peaks_spectrum
 from numina.array.wavecalib.peaks_spectrum import refine_peaks_spectrum
 from numina.array.wavecalib.resample import resample_image2d_flux
-
-from emirdrp.core import EMIR_NBARS
 
 from ccd_line import ArcLine
 from ccd_line import intersection_spectrail_arcline
@@ -790,6 +789,7 @@ class Slitlet2D(object):
         x_inter_rect_shifted = self.x_inter_rect - self.bb_nc1_orig
         y_inter_rect_shifted = self.y_inter_rect - self.bb_ns1_orig
 
+        # compute 2D transformation
         self.ttd_order = order
         self.ttd_aij, self.ttd_bij = compute_distortion(
             x_inter_orig_shifted, y_inter_orig_shifted,
@@ -1146,28 +1146,6 @@ class Slitlet2D(object):
 
         # return median spectrum and refined peak location
         return sp0, fxpeaks
-
-
-def ncoef_fmap(order):
-    """Expected number of coefficients for the 2D polynomial transformation.
-
-    Parameters
-    ----------
-    order : int
-        Order of the 2D polynomial transformation.
-
-    Returns
-    -------
-    ncoef : int
-        Expected number of coefficients.
-
-    """
-
-    ncoef = 0
-    for i in range(order + 1):
-        for j in range(i + 1):
-            ncoef += 1
-    return ncoef
 
 
 def main(args=None):
