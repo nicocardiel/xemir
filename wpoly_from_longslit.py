@@ -143,23 +143,41 @@ class Slitlet2D(object):
         transformation. It is None until the coefficients ttd_aij and
         ttd_bij have been computed.
     ttd_aij : numpy array
-        Polynomial coefficents corresponding to the rectification
-        transformation coefficients a_ij.
+        Polynomial coefficents corresponding to the direct
+        rectification transformation coefficients a_ij.
     ttd_bij : numpy array
-        Polynomial coefficents corresponding to the rectification
-        transformation coefficients b_ij.
+        Polynomial coefficents corresponding to the direct
+        rectification transformation coefficients b_ij.
+    tti_aij : numpy array
+        Polynomial coefficents corresponding to the inverse
+        rectification transformation coefficients a_ij.
+    tti_bij : numpy array
+        Polynomial coefficents corresponding to the inverse
+        rectification transformation coefficients b_ij.
     ttd_order_modeled : int or None
-        Polynomial order corresponding to the modeled rectification
-        transformation. It is None until the coefficients
+        Polynomial order corresponding to the modeled direct
+        rectification transformation. It is None until the coefficients
         ttd_aij_modeled and ttd_bij_modeled have been computed.
     ttd_aij_modeled : numpy array
-        Polynomial coefficents corresponding to the rectification
-        transformation coefficients a_ij interpolated with a smooth
-        polynomial variation as a function of y0_reference_middle.
+        Polynomial coefficents corresponding to the direct
+        rectification transformation coefficients a_ij interpolated
+        with a smooth polynomial variation as a function of
+        y0_reference_middle.
     ttd_bij_modeled : numpy array
-        Polynomial coefficents corresponding to the rectification
-        transformation coefficients b_ij interpolated with a smooth
-        polynomial variation as a function of y0_reference_middle.
+        Polynomial coefficents corresponding to the direct
+        rectification transformation coefficients b_ij interpolated
+        with a smooth polynomial variation as a function of
+        y0_reference_middle.
+    tti_aij_modeled : numpy array
+        Polynomial coefficents corresponding to the inverse
+        rectification transformation coefficients a_ij interpolated
+        with a smooth polynomial variation as a function of
+        y0_reference_middle.
+    tti_bij_modeled : numpy array
+        Polynomial coefficents corresponding to the inverse
+        rectification transformation coefficients b_ij interpolated
+        with a smooth polynomial variation as a function of
+        y0_reference_middle.
     wpoly_initial : Polynomial instance
         Initial wavelength calibration polynomial, providing the
         wavelength as a function of pixel number (running from 1 to
@@ -257,9 +275,13 @@ class Slitlet2D(object):
         self.ttd_order = None
         self.ttd_aij = None
         self.ttd_bij = None
+        self.tti_aij = None
+        self.tti_bij = None
         self.ttd_order_modeled = None
         self.ttd_aij_modeled = None
         self.ttd_bij_modeled = None
+        self.tti_aij_modeled = None
+        self.tti_bij_modeled = None
         self.wpoly_initial = None
         self.wpoly_refined = None
         self.wpoly_modeledd = None
@@ -343,12 +365,18 @@ class Slitlet2D(object):
             "- ttd_order..........: " + str(self.ttd_order) + "\n" + \
             "- ttd_aij............:\n\t" + str(self.ttd_aij) + "\n" + \
             "- ttd_bij............:\n\t" + str(self.ttd_bij) + "\n" + \
+            "- tti_aij............:\n\t" + str(self.tti_aij) + "\n" + \
+            "- tti_bij............:\n\t" + str(self.tti_bij) + "\n" + \
             "- ttd_order_modeled..: " + \
             str(self.ttd_order_modeled) + "\n" + \
             "- ttd_aij_modeled....:\n\t" + \
             str(self.ttd_aij_modeled) + "\n" + \
             "- ttd_bij_modeled....:\n\t" + \
             str(self.ttd_bij_modeled) + "\n" + \
+            "- tti_aij_modeled....:\n\t" + \
+            str(self.tti_aij_modeled) + "\n" + \
+            "- tti_bij_modeled....:\n\t" + \
+            str(self.tti_bij_modeled) + "\n" + \
             "- wpoly_initial......:\n\t" + \
             str(self.wpoly_initial) + "\n" + \
             "- wpoly_refined......:\n\t" + \
@@ -794,6 +822,12 @@ class Slitlet2D(object):
         self.ttd_aij, self.ttd_bij = compute_distortion(
             x_inter_orig_shifted, y_inter_orig_shifted,
             x_inter_rect_shifted, y_inter_rect_shifted,
+            order,
+            self.debugplot
+        )
+        self.tti_aij, self.tti_bij = compute_distortion(
+            x_inter_rect_shifted, y_inter_rect_shifted,
+            x_inter_orig_shifted, y_inter_orig_shifted,
             order,
             self.debugplot
         )
@@ -1345,6 +1379,8 @@ def main(args=None):
 
     for islitlet in list_slitlets:
 
+        cout = '.'
+
         # define Slitlet2D object
         slt = Slitlet2D(islitlet=islitlet,
                         params=params, parmodel=parmodel,
@@ -1430,14 +1466,19 @@ def main(args=None):
             slt.cdelt1_linear = \
                 (crmax1_linear - crmin1_linear) / (naxis1_linear - 1)
 
+            cout = '.'
+
+        else:
+
+            cout = 'x'
+
         # store current slitlet in list of measured slitlets
         measured_slitlets.append(slt)
 
         if args.debugplot == 0:
             if islitlet % 10 == 0:
-                cout = str(islitlet // 10)
-            else:
-                cout = '.'
+                if cout != 'x':
+                    cout = str(islitlet // 10)
             sys.stdout.write(cout)
             # print(slt)
             if islitlet == list_slitlets[-1]:
@@ -1485,44 +1526,70 @@ def main(args=None):
 
     # ------------------------------------------------------------------------
 
-    # rectification transformation coefficients ttd_aij and ttd_bij
+    # rectification transformation coefficients aij and bij
     # step 1: compute variation of each coefficient as a function of
     # y0_reference_middle of each slitlet
-    list_poly_aij = []
-    list_poly_bij = []
+    list_poly_ttd_aij = []
+    list_poly_ttd_bij = []
+    list_poly_tti_aij = []
+    list_poly_tti_bij = []
     ncoef_ttd = ncoef_fmap(args.order_fmap)
     local_debugplot = args.debugplot
     if args.critical_plots:
         local_debugplot = 12
     for i in range(ncoef_ttd):
         xp = []
-        yp_aij = []
-        yp_bij = []
+        yp_ttd_aij = []
+        yp_ttd_bij = []
+        yp_tti_aij = []
+        yp_tti_bij = []
         for slt in measured_slitlets:
             if slt.ttd_aij is not None:
                 xp.append(slt.y0_reference_middle)
-                yp_aij.append(slt.ttd_aij[i])
-                yp_bij.append(slt.ttd_bij[i])
+                yp_ttd_aij.append(slt.ttd_aij[i])
+                yp_ttd_bij.append(slt.ttd_bij[i])
+                yp_tti_aij.append(slt.tti_aij[i])
+                yp_tti_bij.append(slt.tti_bij[i])
         poly, yres, reject = polfit_residuals_with_sigma_rejection(
             x=np.array(xp),
-            y=np.array(yp_aij),
+            y=np.array(yp_ttd_aij),
             deg=5,
             times_sigma_reject=5,
             xlabel='y0_rectified',
             ylabel='ttd_aij[' + str(i) + ']',
             debugplot=local_debugplot
         )
-        list_poly_aij.append(poly)
+        list_poly_ttd_aij.append(poly)
         poly, yres, reject = polfit_residuals_with_sigma_rejection(
             x=np.array(xp),
-            y=np.array(yp_bij),
+            y=np.array(yp_ttd_bij),
             deg=5,
             times_sigma_reject=5,
             xlabel='y0_rectified',
             ylabel='ttd_bij[' + str(i) + ']',
             debugplot=local_debugplot
         )
-        list_poly_bij.append(poly)
+        list_poly_ttd_bij.append(poly)
+        poly, yres, reject = polfit_residuals_with_sigma_rejection(
+            x=np.array(xp),
+            y=np.array(yp_tti_aij),
+            deg=5,
+            times_sigma_reject=5,
+            xlabel='y0_rectified',
+            ylabel='tti_aij[' + str(i) + ']',
+            debugplot=local_debugplot
+        )
+        list_poly_tti_aij.append(poly)
+        poly, yres, reject = polfit_residuals_with_sigma_rejection(
+            x=np.array(xp),
+            y=np.array(yp_tti_bij),
+            deg=5,
+            times_sigma_reject=5,
+            xlabel='y0_rectified',
+            ylabel='tti_bij[' + str(i) + ']',
+            debugplot=local_debugplot
+        )
+        list_poly_tti_bij.append(poly)
     # step 2: use the variation of each coefficient with y0_reference_middle
     # to infer the expected rectification transformation for each slitlet
     for slt in measured_slitlets:
@@ -1530,11 +1597,17 @@ def main(args=None):
         y0_reference_middle = slt.y0_reference_middle
         slt.ttd_aij_modeled = []
         slt.ttd_bij_modeled = []
+        slt.tti_aij_modeled = []
+        slt.tti_bij_modeled = []
         for i in range(ncoef_ttd):
-            new_coeff_aij = list_poly_aij[i](y0_reference_middle)
+            new_coeff_aij = list_poly_ttd_aij[i](y0_reference_middle)
             slt.ttd_aij_modeled.append(new_coeff_aij)
-            new_coeff_bij = list_poly_bij[i](y0_reference_middle)
+            new_coeff_bij = list_poly_ttd_bij[i](y0_reference_middle)
             slt.ttd_bij_modeled.append(new_coeff_bij)
+            new_coeff_aij = list_poly_tti_aij[i](y0_reference_middle)
+            slt.tti_aij_modeled.append(new_coeff_aij)
+            new_coeff_bij = list_poly_tti_bij[i](y0_reference_middle)
+            slt.tti_bij_modeled.append(new_coeff_bij)
 
     # ------------------------------------------------------------------------
 
@@ -1735,7 +1808,7 @@ def main(args=None):
 
         # avoid similar error when creating a python list of coefficients
         # when the numpy array does not exist; note that this problem
-        # does not happen with ttd_aij_modeled and ttd_bij_modeled because
+        # does not happen with tt?_aij_modeled and tt?_bij_modeled because
         # the latter have already been created as native python lists
         if slt.ttd_aij is None:
             ttd_aij = None
@@ -1745,6 +1818,14 @@ def main(args=None):
             ttd_bij = None
         else:
             ttd_bij = slt.ttd_bij.tolist()
+        if slt.tti_aij is None:
+            tti_aij = None
+        else:
+            tti_aij = slt.tti_aij.tolist()
+        if slt.tti_bij is None:
+            tti_bij = None
+        else:
+            tti_bij = slt.tti_bij.tolist()
 
         # creating temporary dictionary with the information corresponding to
         # the current slitlett that will be saved in the JSON file
@@ -1779,9 +1860,13 @@ def main(args=None):
             'ttd_order': slt.ttd_order,
             'ttd_aij': ttd_aij,
             'ttd_bij': ttd_bij,
+            'tti_aij': tti_aij,
+            'tti_bij': tti_bij,
             'ttd_order_modeled': slt.ttd_order_modeled,
             'ttd_aij_modeled': slt.ttd_aij_modeled,
             'ttd_bij_modeled': slt.ttd_bij_modeled,
+            'tti_aij_modeled': slt.tti_aij_modeled,
+            'tti_bij_modeled': slt.tti_bij_modeled,
             'wpoly_initial_coeff': wpoly_initial_coeff,
             'wpoly_refined_coeff': wpoly_refined_coeff,
             'wpoly_modeled_coeff': wpoly_modeled_coeff,
