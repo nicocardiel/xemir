@@ -11,15 +11,16 @@ import numpy as np
 from scipy import ndimage
 from scipy.signal import medfilt
 from skimage import restoration
-from skimage import transform
 import sys
 from uuid import uuid4
 
 from numina.array.display.polfit_residuals import \
     polfit_residuals_with_sigma_rejection
+from numina.array.display.pause_debugplot import pause_debugplot
 from numina.array.display.ximplotxy import ximplotxy
 from numina.array.display.ximshow import ximshow
-from numina.array.display.pause_debugplot import pause_debugplot
+from numina.array.distortion import compute_distortion
+from numina.array.distortion import fmap
 from numina.array.wavecalib.__main__ import read_wv_master_file
 from numina.array.wavecalib.__main__ import wvcal_spectrum
 from numina.array.wavecalib.arccalibration import refine_arccalibration
@@ -789,127 +790,13 @@ class Slitlet2D(object):
         x_inter_rect_shifted = self.x_inter_rect - self.bb_nc1_orig
         y_inter_rect_shifted = self.y_inter_rect - self.bb_ns1_orig
 
-        # normalize ranges dividing by the maximum, so the
-        # transformation fit will be computed with data points with
-        # coordinates in the range [0,1]
-        x_scale = 1.0 / np.concatenate((x_inter_orig_shifted,
-                                        x_inter_rect_shifted)).max()
-        y_scale = 1.0 / np.concatenate((y_inter_orig_shifted,
-                                        y_inter_rect_shifted)).max()
-        if abs(self.debugplot) >= 10:
-            print("x_scale:", x_scale)
-            print("y_scale:", y_scale)
-        x_inter_orig_scaled = x_inter_orig_shifted * x_scale
-        y_inter_orig_scaled = y_inter_orig_shifted * y_scale
-        x_inter_rect_scaled = x_inter_rect_shifted * x_scale
-        y_inter_rect_scaled = y_inter_rect_shifted * y_scale
-
-        if abs(self.debugplot) % 10 != 0:
-            ax = ximplotxy(x_inter_orig_scaled, y_inter_orig_scaled,
-                           show=False,
-                           **{'marker': 'o', 'color': 'cyan',
-                              'label': 'original', 'linestyle': ''})
-            dum = zip(x_inter_orig_scaled, y_inter_orig_scaled)
-            for idum in range(len(dum)):
-                ax.text(dum[idum][0], dum[idum][1], str(idum+1), fontsize=10,
-                        horizontalalignment='center',
-                        verticalalignment='bottom', color='green')
-            ax.plot(x_inter_rect_scaled, y_inter_rect_scaled, 'bo',
-                    label="rectified")
-            dum = zip(x_inter_rect_scaled, y_inter_rect_scaled)
-            for idum in range(len(dum)):
-                ax.text(dum[idum][0], dum[idum][1], str(idum+1), fontsize=10,
-                        horizontalalignment='center',
-                        verticalalignment='bottom', color='blue')
-            xmin = np.concatenate((x_inter_orig_scaled,
-                                   x_inter_rect_scaled)).min()
-            xmax = np.concatenate((x_inter_orig_scaled,
-                                   x_inter_rect_scaled)).max()
-            ymin = np.concatenate((y_inter_orig_scaled,
-                                   y_inter_rect_scaled)).min()
-            ymax = np.concatenate((y_inter_orig_scaled,
-                                   y_inter_rect_scaled)).max()
-            dx = xmax - xmin
-            xmin -= dx/20
-            xmax += dx/20
-            dy = ymax - ymin
-            ymin -= dy/20
-            ymax += dy/20
-            ax.set_xlim([xmin, xmax])
-            ax.set_ylim([ymin, ymax])
-            ax.set_xlabel("pixel (normalized coordinate)")
-            ax.set_ylabel("pixel (normalized coordinate)")
-            ax.set_title("(estimate_tt_to_rectify #1)\n\n")
-            # shrink current axis and put a legend
-            box = ax.get_position()
-            ax.set_position([box.x0, box.y0, box.width, box.height * 0.92])
-            ax.legend(loc=3, bbox_to_anchor=(0., 1.02, 1., 0.07),
-                      mode="expand", borderaxespad=0., ncol=4,
-                      numpoints=1)
-            pause_debugplot(self.debugplot, pltshow=True)
-
-        # solve 2 systems of equations with half number of unknowns each
-        if order == 1:
-            A = np.vstack([np.ones(npoints),
-                           x_inter_rect_scaled,
-                           y_inter_rect_scaled]).T
-        elif order == 2:
-            A = np.vstack([np.ones(npoints),
-                           x_inter_rect_scaled,
-                           y_inter_rect_scaled,
-                           x_inter_rect_scaled ** 2,
-                           x_inter_rect_scaled * y_inter_orig_scaled,
-                           y_inter_rect_scaled ** 2]).T
-        elif order == 3:
-            A = np.vstack([np.ones(npoints),
-                           x_inter_rect_scaled,
-                           y_inter_rect_scaled,
-                           x_inter_rect_scaled ** 2,
-                           x_inter_rect_scaled * y_inter_orig_scaled,
-                           y_inter_rect_scaled ** 2,
-                           x_inter_rect_scaled ** 3,
-                           x_inter_rect_scaled ** 2 * y_inter_rect_scaled,
-                           x_inter_rect_scaled * y_inter_rect_scaled ** 2,
-                           y_inter_rect_scaled ** 3]).T
-        elif order == 4:
-            A = np.vstack([np.ones(npoints),
-                           x_inter_rect_scaled,
-                           y_inter_rect_scaled,
-                           x_inter_rect_scaled ** 2,
-                           x_inter_rect_scaled * y_inter_orig_scaled,
-                           y_inter_rect_scaled ** 2,
-                           x_inter_rect_scaled ** 3,
-                           x_inter_rect_scaled ** 2 * y_inter_rect_scaled,
-                           x_inter_rect_scaled * y_inter_rect_scaled ** 2,
-                           y_inter_rect_scaled ** 3,
-                           x_inter_rect_scaled ** 4,
-                           x_inter_rect_scaled ** 3 * y_inter_rect_scaled ** 1,
-                           x_inter_rect_scaled ** 2 * y_inter_rect_scaled ** 2,
-                           x_inter_rect_scaled ** 1 * y_inter_rect_scaled ** 3,
-                           y_inter_rect_scaled ** 4]).T
-        else:
-            raise ValueError("Invalid order=" + str(order))
-        ttd = transform.PolynomialTransform(
-            np.vstack(
-                [np.linalg.lstsq(A, x_inter_orig_scaled)[0],
-                 np.linalg.lstsq(A, y_inter_orig_scaled)[0]]
-            )
-        )
-
-        # reverse normalization to recover coefficients of the
-        # transformation in the correct system
-        factor = np.zeros_like(ttd.params[0])
-        k = 0
-        for i in range(order + 1):
-            for j in range(i + 1):
-                factor[k] = (x_scale**(i-j)) * (y_scale**j)
-                k += 1
         self.ttd_order = order
-        self.ttd_aij = ttd.params[0] * factor/x_scale
-        self.ttd_bij = ttd.params[1] * factor/y_scale
-        if self.debugplot >= 10:
-            print("ttd_aij X:\n", self.ttd_aij)
-            print("ttd_bij Y:\n", self.ttd_bij)
+        self.ttd_aij, self.ttd_bij = compute_distortion(
+            x_inter_orig_shifted, y_inter_orig_shifted,
+            x_inter_rect_shifted, y_inter_rect_shifted,
+            order,
+            self.debugplot
+        )
 
         # display slitlet with intersection points and grid indicating
         # the fitted transformation
@@ -1283,46 +1170,6 @@ def ncoef_fmap(order):
     return ncoef
 
 
-def fmap(order, aij, bij, x, y):
-    """Evaluate the 2D polynomial transformation.
-
-    Parameters
-    ----------
-    order : int
-        Order of the polynomial transformation.
-    aij : numpy array
-        Polynomial coefficents corresponding to a_ij.
-    bij : numpy array
-        Polynomial coefficents corresponding to b_ij.
-    x : numpy array or float
-        X coordinate values where the transformation is computed. Note
-        that these values correspond to array indices.
-    y : numpy array or float
-        Y coordinate values where the transformation is computed. Note
-        that these values correspond to array indices.
-
-    Returns
-    -------
-    u : numpy array or float
-        U coordinate values.
-    v : numpy array or float
-        V coordinate values.
-
-    """
-
-    u = np.zeros_like(x)
-    v = np.zeros_like(y)
-
-    k = 0
-    for i in range(order + 1):
-        for j in range(i + 1):
-            u += aij[k] * (x ** (i - j)) * (y ** j)
-            v += bij[k] * (x ** (i - j)) * (y ** j)
-            k += 1
-
-    return u, v
-
-
 def main(args=None):
 
     # parse command-line options
@@ -1354,6 +1201,9 @@ def main(args=None):
                         type=argparse.FileType('w'))
 
     # optional arguments
+    parser.add_argument("--critical_plots",
+                        help="Display some critical plots",
+                        action="store_true")
     parser.add_argument("--out_rect",
                         help="Rectified but not wavelength calibrated output "
                              "FITS file",
@@ -1510,6 +1360,9 @@ def main(args=None):
 
     # ------------------------------------------------------------------------
 
+    # compute rectification transformation and wavelength calibration
+    # polynomial
+
     measured_slitlets = []
 
     for islitlet in list_slitlets:
@@ -1621,6 +1474,9 @@ def main(args=None):
     # step 1: compute variation of each coefficient as a function of
     # y0_reference_middle of each slitlet
     list_poly = []
+    local_debugplot = args.debugplot
+    if args.critical_plots:
+        local_debugplot = 12
     for i in range(args.poldeg_refined + 1):
         xp = []
         yp = []
@@ -1635,7 +1491,7 @@ def main(args=None):
             times_sigma_reject=5,
             xlabel='y0_rectified',
             ylabel='coeff[' + str(i) + ']',
-            debugplot=args.debugplot
+            debugplot=local_debugplot
         )
         list_poly.append(poly)
     # step 2: use the variation of each polynomial coefficient with
@@ -1657,6 +1513,9 @@ def main(args=None):
     list_poly_aij = []
     list_poly_bij = []
     ncoef_ttd = ncoef_fmap(args.order_fmap)
+    local_debugplot = args.debugplot
+    if args.critical_plots:
+        local_debugplot = 12
     for i in range(ncoef_ttd):
         xp = []
         yp_aij = []
@@ -1673,7 +1532,7 @@ def main(args=None):
             times_sigma_reject=5,
             xlabel='y0_rectified',
             ylabel='ttd_aij[' + str(i) + ']',
-            debugplot=args.debugplot
+            debugplot=local_debugplot
         )
         list_poly_aij.append(poly)
         poly, yres, reject = polfit_residuals_with_sigma_rejection(
@@ -1683,7 +1542,7 @@ def main(args=None):
             times_sigma_reject=5,
             xlabel='y0_rectified',
             ylabel='ttd_bij[' + str(i) + ']',
-            debugplot=args.debugplot
+            debugplot=local_debugplot
         )
         list_poly_bij.append(poly)
     # step 2: use the variation of each coefficient with y0_reference_middle
