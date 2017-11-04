@@ -874,7 +874,7 @@ class Slitlet2D(object):
             # show plot
             pause_debugplot(self.debugplot, pltshow=True)
 
-    def rectify(self, slitlet2d, resampling, transformation):
+    def rectify(self, slitlet2d, resampling, transformation, inverse=False):
         """Rectify slitlet using computed transformation.
 
         Parameters
@@ -885,6 +885,9 @@ class Slitlet2D(object):
             1: nearest neighbour, 2: flux preserving interpolation.
         transformation : int
             1: initial, 2: modeled
+        inverse : bool
+            If true, the inverse rectification transformation is
+            employed.
 
         Returns
         -------
@@ -908,6 +911,24 @@ class Slitlet2D(object):
         if naxis2 != self.bb_ns2_orig - self.bb_ns1_orig + 1:
             raise ValueError("Unexpected slitlet2d_rect naxis2")
 
+        # transformation to be employed (and direction)
+        if transformation == 1:
+            order = self.ttd_order
+            if inverse:
+                aij = self.tti_aij
+                bij = self.tti_bij
+            else:
+                aij = self.ttd_aij
+                bij = self.ttd_bij
+        else:
+            order = self.ttd_order_modeled
+            if inverse:
+                aij = self.tti_aij_modeled
+                bij = self.tti_bij_modeled
+            else:
+                aij = self.ttd_aij_modeled
+                bij = self.ttd_bij_modeled
+
         if resampling == 1:
             # pixel coordinates (rectified image); since the fmap function
             # below requires floats, these arrays must use dtype=np.float
@@ -918,16 +939,7 @@ class Slitlet2D(object):
             xx = np.tile(j, (len(i),))
             yy = np.repeat(i, len(j))
             # compute pixel coordinates in original (distorted) image
-            if transformation == 1:
-                xxx, yyy = fmap(self.ttd_order,
-                                self.ttd_aij,
-                                self.ttd_bij,
-                                xx, yy)
-            else:
-                xxx, yyy = fmap(self.ttd_order_modeled,
-                                self.ttd_aij_modeled,
-                                self.ttd_bij_modeled,
-                                xx, yy)
+            xxx, yyy = fmap(order, aij, bij, xx, yy)
             # round to nearest integer and cast to integer; note that the
             # rounding still provides a float, so the casting is required
             ixxx = np.rint(xxx).astype(np.int)
@@ -1600,18 +1612,19 @@ def main(args=None):
         slt.tti_aij_modeled = []
         slt.tti_bij_modeled = []
         for i in range(ncoef_ttd):
-            new_coeff_aij = list_poly_ttd_aij[i](y0_reference_middle)
-            slt.ttd_aij_modeled.append(new_coeff_aij)
-            new_coeff_bij = list_poly_ttd_bij[i](y0_reference_middle)
-            slt.ttd_bij_modeled.append(new_coeff_bij)
-            new_coeff_aij = list_poly_tti_aij[i](y0_reference_middle)
-            slt.tti_aij_modeled.append(new_coeff_aij)
-            new_coeff_bij = list_poly_tti_bij[i](y0_reference_middle)
-            slt.tti_bij_modeled.append(new_coeff_bij)
+            new_coeff = list_poly_ttd_aij[i](y0_reference_middle)
+            slt.ttd_aij_modeled.append(new_coeff)
+            new_coeff = list_poly_ttd_bij[i](y0_reference_middle)
+            slt.ttd_bij_modeled.append(new_coeff)
+            new_coeff = list_poly_tti_aij[i](y0_reference_middle)
+            slt.tti_aij_modeled.append(new_coeff)
+            new_coeff = list_poly_tti_bij[i](y0_reference_middle)
+            slt.tti_bij_modeled.append(new_coeff)
 
     # ------------------------------------------------------------------------
 
     image2d_rectified = np.zeros((NAXIS2_EMIR, NAXIS1_EMIR))
+    image2d_unrectified = np.zeros((NAXIS2_EMIR, NAXIS1_EMIR))
     image2d_rectified_wv_initial = np.zeros((NAXIS2_EMIR, naxis1_enlarged))
     image2d_rectified_wv_refined = np.zeros((NAXIS2_EMIR, naxis1_enlarged))
     image2d_rectified_wv_modeled = np.zeros((NAXIS2_EMIR, naxis1_enlarged))
@@ -1658,6 +1671,11 @@ def main(args=None):
                                      resampling=1,
                                      transformation=transformation)
 
+        slitlet2d_unrect = slt.rectify(slitlet2d_rect,
+                                       resampling=1,
+                                       transformation=transformation,
+                                       inverse=True)
+
         ii1 = nscan_min - slt.bb_ns1_orig
         ii2 = nscan_max - slt.bb_ns1_orig + 1
 
@@ -1667,6 +1685,7 @@ def main(args=None):
         i2 = i1 + ii2 - ii1
 
         image2d_rectified[i1:i2, j1:j2] = slitlet2d_rect[ii1:ii2, :]
+        image2d_unrectified[i1:i2, j1:j2] = slitlet2d_unrect[ii1:ii2, :]
 
         # wavelength calibration of rectified image
 
@@ -1724,11 +1743,16 @@ def main(args=None):
 
     if abs(args.debugplot) % 10 != 0:
         ximshow(image2d_rectified, debugplot=12)
+        ximshow(image2d_unrectified, debugplot=12)
 
     if args.out_rect is not None:
+        # Save rectified (but not wavelength calibrated image) in first
+        # extension, while the second extension is employed to store
+        # the unrectified version of the previous one
         save_ndarray_to_fits(
-            array=image2d_rectified,
+            array=[image2d_rectified, image2d_unrectified],
             file_name=args.out_rect,
+            cast_to_float=[True]*2,
             overwrite=True
         )
 
