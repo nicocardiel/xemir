@@ -8,7 +8,7 @@ from emirdrp.core import EMIR_NBARS
 
 
 class CsuConfiguration(object):
-    """CSU Configuration class definition.
+    """Configurable Slit Unit (CSU) Configuration class definition.
 
     Attributes
     ----------
