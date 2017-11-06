@@ -70,6 +70,10 @@ class DtuConfiguration(object):
             (self.zdtu_0 == other.zdtu_0)
         return result
 
+    def __ne__(self, other):
+        result = not self.__eq__(other)
+        return result
+
     def define_from_fits(self, fitsobj, extnum=0):
         """Define class members from header information in FITS file.
 
