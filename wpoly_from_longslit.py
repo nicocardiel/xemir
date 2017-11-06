@@ -327,18 +327,18 @@ class Slitlet2D(object):
                  str(self.bb_ns1_orig) + "\n" + \
             "- bb_ns2_orig.................: " + \
                  str(self.bb_ns2_orig) + "\n" + \
-            "- lower spectrail.poly_funct..:\n\t" + \
+            "- lower spectrail_poly_funct..:\n\t" + \
                  str(self.list_spectrails[self.i_lower_spectrail].poly_funct)\
                  + "\n" + \
-            "- middle spectrail.poly_funct.:\n\t" + \
+            "- middle spectrail_poly_funct.:\n\t" + \
                  str(self.list_spectrails[self.i_middle_spectrail].poly_funct)\
                  + "\n" + \
-            "- upper spectrail.poly_funct..:\n\t" + \
+            "- upper spectrail_poly_funct..:\n\t" + \
                  str(self.list_spectrails[self.i_upper_spectrail].poly_funct)\
                  + "\n" + \
-            "- lower frontier.poly_funct...:\n\t" + \
+            "- lower frontier_poly_funct...:\n\t" + \
                 str(self.list_frontiers[0].poly_funct) + "\n" + \
-            "- upper frontier.poly_funct...:\n\t" + \
+            "- upper frontier_poly_funct...:\n\t" + \
                 str(self.list_frontiers[1].poly_funct) + "\n"
 
         if self.list_arc_lines is None:
@@ -1763,7 +1763,7 @@ def main(args=None):
 
     # ---
 
-    # Generated structure to save results into an ouptut JSON file
+    # Generate structure to save results into an ouptut JSON file
     outdict = {}
     outdict['instrument'] = 'EMIR'
     outdict['meta-info'] = {}
@@ -1854,19 +1854,23 @@ def main(args=None):
             'bb_nc2_orig': slt.bb_nc2_orig,
             'bb_ns1_orig': slt.bb_ns1_orig,
             'bb_ns2_orig': slt.bb_ns2_orig,
-            'lower_spectrail_poly_coeff':
-                slt.list_spectrails[
-                    slt.i_lower_spectrail].poly_funct.coef.tolist(),
-            'middle_spectrail.poly_funct':
-                slt.list_spectrails[
-                    slt.i_middle_spectrail].poly_funct.coef.tolist(),
-            'upper_spectrail.poly_funct':
-                slt.list_spectrails[
-                    slt.i_upper_spectrail].poly_funct.coef.tolist(),
-            'lower_frontier.poly_funct':
-                slt.list_frontiers[0].poly_funct.coef.tolist(),
-            'upper_frontier.poly_funct':
-                slt.list_frontiers[1].poly_funct.coef.tolist(),
+            'spectrail': {
+                'poly_coef_lower':
+                    slt.list_spectrails[
+                        slt.i_lower_spectrail].poly_funct.coef.tolist(),
+                'poly_coef_middle':
+                    slt.list_spectrails[
+                        slt.i_middle_spectrail].poly_funct.coef.tolist(),
+                'poly_coef_upper:':
+                    slt.list_spectrails[
+                        slt.i_upper_spectrail].poly_funct.coef.tolist(),
+            },
+            'frontier': {
+                'poly_coef_lower':
+                    slt.list_frontiers[0].poly_funct.coef.tolist(),
+                'poly_coef_upper':
+                    slt.list_frontiers[1].poly_funct.coef.tolist(),
+            },
             'ttd_order': slt.ttd_order,
             'ttd_aij': ttd_aij,
             'ttd_bij': ttd_bij,
