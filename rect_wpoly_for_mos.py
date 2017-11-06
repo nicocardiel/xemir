@@ -18,6 +18,27 @@ from dtu_configuration import DtuConfiguration
 from numina.array.display.pause_debugplot import DEBUGPLOT_CODES
 
 
+def islitlet_progress(islitlet, islitlet_max):
+    """Auxiliary function to print out progress in loop of slitlets.
+
+    Parameters
+    ----------
+    islitlet : int
+        Current slitlet number.
+    islitlet_max : int
+        Maximum slitlet number.
+
+    """
+    if islitlet % 10 == 0:
+        cout = str(islitlet // 10)
+    else:
+        cout = '.'
+    sys.stdout.write(cout)
+    if islitlet == islitlet_max:
+        sys.stdout.write('\n')
+    sys.stdout.flush()
+
+
 def main(args=None):
 
     # parse command-line options
@@ -174,15 +195,15 @@ def main(args=None):
         for islitlet in range(islitlet_min, islitlet_max + 1):
             cslitlet = 'slitlet' + str(islitlet).zfill(2)
             tmppoly = tmpdict[cslitlet]['frontier']['poly_coef_lower']
-            poldeg_check_list.append(len(tmppoly))
+            poldeg_check_list.append(len(tmppoly) - 1)
             tmppoly = tmpdict[cslitlet]['frontier']['poly_coef_upper']
-            poldeg_check_list.append(len(tmppoly))
+            poldeg_check_list.append(len(tmppoly) - 1)
             tmppoly = tmpdict[cslitlet]['spectrail']['poly_coef_lower']
-            poldeg_check_list.append(len(tmppoly))
+            poldeg_check_list.append(len(tmppoly) - 1)
             tmppoly = tmpdict[cslitlet]['spectrail']['poly_coef_middle']
-            poldeg_check_list.append(len(tmppoly))
+            poldeg_check_list.append(len(tmppoly) - 1)
             tmppoly = tmpdict[cslitlet]['spectrail']['poly_coef_upper']
-            poldeg_check_list.append(len(tmppoly))
+            poldeg_check_list.append(len(tmppoly) - 1)
     # remove duplicates in list
     poldeg_no_duplicates = list(set(poldeg_check_list))
     if len(poldeg_no_duplicates) != 1:
@@ -201,15 +222,7 @@ def main(args=None):
     # version aij_modeled and bij_modeled
     for islitlet in range(islitlet_min, islitlet_max + 1):
         if abs(args.debugplot) == 0:
-            if islitlet % 10 == 0:
-                cout = str(islitlet // 10)
-            else:
-                cout = '.'
-            sys.stdout.write(cout)
-            if islitlet == islitlet_max:
-                sys.stdout.write('\n')
-            sys.stdout.flush()
-
+            islitlet_progress(islitlet, islitlet_max)
         cslitlet = 'slitlet' + str(islitlet).zfill(2)
         outdict['contents'][cslitlet] = {}
         for keycoef in ['ttd_aij', 'ttd_bij', 'tti_aij', 'tti_bij']:
@@ -244,6 +257,48 @@ def main(args=None):
             outdict['contents'][cslitlet][keycoef] = {}
             for k, tmpcoef in enumerate(list_cc_rect):
                 outdict['contents'][cslitlet][keycoef][k] = tmpcoef
+
+    # ---
+
+    # Interpolate wavelength calibration polynomial coefficients
+
+    # note: when wpoly_refined_coeff have not been computed, we use the
+    # wpoly_modeled_coeff
+    for islitlet in range(islitlet_min, islitlet_max + 1):
+        if abs(args.debugplot) == 0:
+            islitlet_progress(islitlet, islitlet_max)
+        cslitlet = 'slitlet' + str(islitlet).zfill(2)
+        list_cc_rect = []
+        for icoef in range(poldeg + 1):
+            list_csu_bar_slit_center = []
+            list_cij = []
+            for ifile in range(nfiles):
+                tmpdict = list_json_longslits[ifile]['contents'][cslitlet]
+                csu_bar_slit_center = tmpdict['csu_bar_slit_center']
+                list_csu_bar_slit_center.append(csu_bar_slit_center)
+                cij = tmpdict['wpoly_refined_coeff']
+                if cij is not None:
+                    list_cij.append(cij[icoef])
+                else:
+                    cij_modeled = tmpdict['wpoly_modeled_coeff']
+                    if cij_modeled is None:
+                        raise ValueError("Unexpected cij_modeled=None!")
+                    else:
+                        list_cij.append(cij_modeled[icoef])
+            poly, yres, reject = polfit_residuals_with_sigma_rejection(
+                x=np.array(list_csu_bar_slit_center),
+                y=np.array(list_cij),
+                deg=2,
+                times_sigma_reject=5,
+                xlabel='csu_bar_slit_center',
+                ylabel='wpoly_coef' + '[' + str(icoef) + ']',
+                title=cslitlet,
+                debugplot=args.debugplot
+            )
+            list_cc_rect.append(poly.coef.tolist())
+        outdict['contents'][cslitlet]['wpoly_coeff'] = {}
+        for k, tmpcoef in enumerate(list_cc_rect):
+            outdict['contents'][cslitlet]['wpoly_coeff'][k] = tmpcoef
 
     # ---
 
