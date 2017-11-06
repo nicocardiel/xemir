@@ -1176,7 +1176,7 @@ class Slitlet2D(object):
 def main(args=None):
 
     # parse command-line options
-    parser = argparse.ArgumentParser(prog='test')
+    parser = argparse.ArgumentParser(prog='wpoly_from_longslit')
     # required arguments
     parser.add_argument("fitsfile_odd",
                         help="FITS file with odd-numbered slitlets",
