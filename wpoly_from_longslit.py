@@ -1861,7 +1861,7 @@ def main(args=None):
                 'poly_coef_middle':
                     slt.list_spectrails[
                         slt.i_middle_spectrail].poly_funct.coef.tolist(),
-                'poly_coef_upper:':
+                'poly_coef_upper':
                     slt.list_spectrails[
                         slt.i_upper_spectrail].poly_funct.coef.tolist(),
             },
