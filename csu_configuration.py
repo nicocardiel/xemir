@@ -107,6 +107,26 @@ class CsuConfiguration(object):
         # the attributes have been properly set
         self.defined = True
 
+    def outdict(self):
+        """Return dictionary structure rounded to a given precision."""
+
+        outdict = {}
+        if self.defined:
+            for i in range(EMIR_NBARS):
+                ibar = i + 1
+                cbar = 'slitlet' + str(ibar).zfill(2)
+                outdict[cbar] = {}
+                outdict[cbar]['csu_bar_left'] = \
+                    round(self.csu_bar_left[i], 3)
+                outdict[cbar]['csu_bar_right'] = \
+                    round(self.csu_bar_right[i], 3)
+                outdict[cbar]['csu_bar_slit_center'] = \
+                    round(self.csu_bar_slit_center[i], 3)
+                outdict[cbar]['csu_bar_slit_width'] = \
+                    round(self.csu_bar_slit_width[i], 3)
+
+        return outdict
+
 
 def merge_odd_even_csu_configurations(conf_odd, conf_even):
     """Merge CSU configuration using odd- and even-numbered values.
