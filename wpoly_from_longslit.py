@@ -1228,7 +1228,7 @@ def main(args=None):
     if args.echo:
         print('\033[1m\033[31m% ' + ' '.join(sys.argv) + '\033[0m\n')
 
-    # ------------------------------------------------------------------------
+    # ---
 
     # read the CSU configuration from the two initial FITS files and merge
     # the corresponding configurations in a single one containing the
@@ -1361,7 +1361,7 @@ def main(args=None):
     lok = lok1 * lok2
     wv_master_all = wv_master_all[lok]
 
-    # ------------------------------------------------------------------------
+    # ---
 
     # compute rectification transformation and wavelength calibration
     # polynomial
@@ -1478,7 +1478,7 @@ def main(args=None):
         else:
             pause_debugplot(args.debugplot)
 
-    # ------------------------------------------------------------------------
+    # ---
 
     # polynomial coefficients corresponding to the wavelength calibration
     # step 1: compute variation of each coefficient as a function of
@@ -1515,7 +1515,7 @@ def main(args=None):
             list_new_coeff.append(new_coeff)
         slt.wpoly_modeled = np.polynomial.Polynomial(list_new_coeff)
 
-    # ------------------------------------------------------------------------
+    # ---
 
     # rectification transformation coefficients aij and bij
     # step 1: compute variation of each coefficient as a function of
@@ -1600,7 +1600,7 @@ def main(args=None):
             new_coeff = list_poly_tti_bij[i](y0_reference_middle)
             slt.tti_bij_modeled.append(new_coeff)
 
-    # ------------------------------------------------------------------------
+    # ---
 
     image2d_rectified = np.zeros((NAXIS2_EMIR, NAXIS1_EMIR))
     image2d_unrectified = np.zeros((NAXIS2_EMIR, NAXIS1_EMIR))
@@ -1761,7 +1761,7 @@ def main(args=None):
             overwrite=True
         )
 
-    # ------------------------------------------------------------------------
+    # ---
 
     # Generated structure to save results into an ouptut JSON file
     outdict = {}
