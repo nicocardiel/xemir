@@ -36,6 +36,8 @@ class DtuConfiguration(object):
         self.defined = False
 
     def __str__(self):
+        # note: set the number of decimal figures in output to the precision
+        # value employed in __eq__() function below
         output = "<DtuConfiguration instance>\n"
         if self.defined:
             strdum = "- XDTU..: {0:8.3f}\n".format(self.xdtu)
@@ -60,14 +62,18 @@ class DtuConfiguration(object):
         return output
 
     def __eq__(self, other):
+        # note: set the precision (number of decimal places) to the same
+        # number employed in __str__() function above to print out member
+        # values
+        ndig = 3
         result = \
             (self.defined == other.defined) and \
-            (self.xdtu == other.xdtu) and \
-            (self.ydtu == other.ydtu) and \
-            (self.zdtu == other.zdtu) and \
-            (self.xdtu_0 == other.xdtu_0) and \
-            (self.ydtu_0 == other.ydtu_0) and \
-            (self.zdtu_0 == other.zdtu_0)
+            (round(self.xdtu, ndig) == round(other.xdtu, ndig)) and \
+            (round(self.ydtu, ndig) == round(other.ydtu, ndig)) and \
+            (round(self.zdtu, ndig) == round(other.zdtu, ndig)) and \
+            (round(self.xdtu_0, ndig) == round(other.xdtu_0, ndig)) and \
+            (round(self.ydtu_0, ndig) == round(other.ydtu_0, ndig)) and \
+            (round(self.zdtu_0, ndig) == round(other.zdtu_0, ndig))
         return result
 
     def __ne__(self, other):
