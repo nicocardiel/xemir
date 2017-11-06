@@ -2,13 +2,20 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+from datetime import datetime
 import json
+import numpy as np
 import sys
+from uuid import uuid4
 
 from numina.array.display.fileinfo import list_fileinfo_from_txt
-from numina.array.display.pause_debugplot import DEBUGPLOT_CODES
+from numina.array.display.polfit_residuals import \
+    polfit_residuals_with_sigma_rejection
+from numina.array.distortion import ncoef_fmap
 
 from dtu_configuration import DtuConfiguration
+
+from numina.array.display.pause_debugplot import DEBUGPLOT_CODES
 
 
 def main(args=None):
@@ -19,6 +26,9 @@ def main(args=None):
     parser.add_argument("input_list",
                         help="TXT file with list JSON files derived from "
                              "longslit data")
+    parser.add_argument("--out_json", required=True,
+                        help="Output JSON file with results",
+                        type=argparse.FileType('w'))
 
     # optional arguments
     parser.add_argument("--debugplot",
@@ -34,7 +44,7 @@ def main(args=None):
     if args.echo:
         print('\033[1m\033[31m% ' + ' '.join(sys.argv) + '\033[0m\n')
 
-    # ------------------------------------------------------------------------
+    # ---
 
     # Read input TXT file with list of JSON files
     list_json_files = list_fileinfo_from_txt(args.input_list)
@@ -48,29 +58,174 @@ def main(args=None):
 
     # protections: check consistency of grism, filter and DTU configuration
     json_first_longslit = json.loads(open(list_json_files[0].filename).read())
-    dtu_conf_first_longslit = DtuConfiguration()
-    dtu_conf_first_longslit.define_from_dictionary(
-        json_first_longslit['dtu_configuration'])
-    filter_first_longslit = json_first_longslit['tags']['filter']
-    grism_first_longslit = json_first_longslit['tags']['grism']
+    dtu_conf = DtuConfiguration()
+    dtu_conf.define_from_dictionary(json_first_longslit['dtu_configuration'])
+    filter_name = json_first_longslit['tags']['filter']
+    grism_name = json_first_longslit['tags']['grism']
+    islitlet_min = json_first_longslit['tags']['islitlet_min']
+    islitlet_max = json_first_longslit['tags']['islitlet_max']
     for ifile in range(1, nfiles):
         json_tmp = json.loads(open(list_json_files[ifile].filename).read())
         dtu_conf_tmp = DtuConfiguration()
         dtu_conf_tmp.define_from_dictionary(json_tmp['dtu_configuration'])
         filter_tmp = json_tmp['tags']['filter']
         grism_tmp = json_tmp['tags']['grism']
-        if dtu_conf_first_longslit != dtu_conf_tmp:
-            print(dtu_conf_first_longslit)
+        islitlet_min_tmp = json_tmp['tags']['islitlet_min']
+        islitlet_max_tmp = json_tmp['tags']['islitlet_max']
+        if dtu_conf != dtu_conf_tmp:
+            print(dtu_conf)
             print(dtu_conf_tmp)
             raise ValueError("Unexpected different DTU configurations found")
-        if filter_first_longslit != filter_tmp:
-            print(filter_first_longslit)
+        if filter_name != filter_tmp:
+            print(filter_name)
             print(filter_tmp)
             raise ValueError("Unexpected different filter found")
-        if grism_first_longslit != grism_tmp:
-            print(grism_first_longslit)
+        if grism_name != grism_tmp:
+            print(grism_name)
             print(grism_tmp)
             raise ValueError("Unexpected different grism found")
+        if islitlet_min != islitlet_min_tmp:
+            print(islitlet_min)
+            print(islitlet_min_tmp)
+            raise ValueError("Unexpected different islitlet_min_found")
+        if islitlet_max != islitlet_max_tmp:
+            print(islitlet_max)
+            print(islitlet_max_tmp)
+            raise ValueError("Unexpected different islitlet_max_found")
+
+    # ---
+
+    # Read and store all the longslit data
+    list_json_longslits = []
+    for ifile in range(nfiles):
+        json_tmp = json.loads(open(list_json_files[ifile].filename).read())
+        list_json_longslits.append(json_tmp)
+
+    # ---
+
+    # Check that all the expected slitlets are defined
+
+    for ifile in range(nfiles):
+        tmpdict = list_json_longslits[ifile]['contents']
+        for islitlet in range(islitlet_min, islitlet_max + 1):
+            cslitlet = 'slitlet' + str(islitlet).zfill(2)
+            if cslitlet not in tmpdict:
+                raise ValueError(cslitlet + " not found!")
+
+    # ---
+
+    # Initialize structure to save results into an ouptut JSON file
+    outdict = {}
+    outdict['instrument'] = 'EMIR'
+    outdict['meta-info'] = {}
+    outdict['meta-info']['creation_date'] = datetime.now().isoformat()
+    outdict['meta-info']['description'] = \
+        'wavelength calibration polynomials and rectification ' \
+        'coefficients for MOS'
+    outdict['meta-info']['recipe_name'] = 'undefined'
+    outdict['meta-info']['origin'] = {}
+    outdict['meta-info']['origin']['wpoly_longslits'] = {}
+    for ifile in range(nfiles):
+        cdum = 'longslit_' + str(ifile + 1).zfill(3) + '_uuid'
+        outdict['meta-info']['origin']['wpoly_longslits'][cdum] = \
+            list_json_longslits[ifile]['uuid']
+    outdict['tags'] = {}
+    outdict['tags']['grism'] = grism_name
+    outdict['tags']['filter'] = filter_name
+    outdict['tags']['islitlet_min'] = islitlet_min
+    outdict['tags']['islitlet_max'] = islitlet_max
+    outdict['dtu_configuration'] = {}
+    outdict['dtu_configuration']['xdtu'] = round(dtu_conf.xdtu, 3)
+    outdict['dtu_configuration']['ydtu'] = round(dtu_conf.ydtu, 3)
+    outdict['dtu_configuration']['zdtu'] = round(dtu_conf.zdtu, 3)
+    outdict['dtu_configuration']['xdtu_0'] = round(dtu_conf.xdtu_0, 3)
+    outdict['dtu_configuration']['ydtu_0'] = round(dtu_conf.ydtu_0, 3)
+    outdict['dtu_configuration']['zdtu_0'] = round(dtu_conf.zdtu_0, 3)
+    outdict['uuid'] = str(uuid4())
+    outdict['contents'] = {}
+
+    # check that order for rectification transformations is the same for all
+    # the slitlets and longslit configurations
+    order_check_list = []
+    for ifile in range(nfiles):
+        tmpdict = list_json_longslits[ifile]['contents']
+        for islitlet in range(islitlet_min, islitlet_max + 1):
+            cslitlet = 'slitlet' + str(islitlet).zfill(2)
+            ttd_order = tmpdict[cslitlet]['ttd_order']
+            if ttd_order is not None:
+                order_check_list.append(ttd_order)
+            ttd_order_modeled = tmpdict[cslitlet]['ttd_order_modeled']
+            order_check_list.append(ttd_order_modeled)
+    # remove duplicates in list
+    order_no_duplicates = list(set(order_check_list))
+    if len(order_no_duplicates) != 1:
+        print('order_no_duplicates:', order_no_duplicates)
+        raise ValueError('tdd_order is not constant!')
+    order = int(order_no_duplicates[0])
+    ncoef = ncoef_fmap(order)
+    if abs(args.debugplot) >= 10:
+        print('>>> ttd_order:', order)
+        print('>>> ncoef....:', ncoef)
+
+    # check that polynomial degree in frontiers and spectrails are the same
+    poldeg_check_list = []
+    for ifile in range(nfiles):
+        tmpdict = list_json_longslits[ifile]['contents']
+        for islitlet in range(islitlet_min, islitlet_max + 1):
+            cslitlet = 'slitlet' + str(islitlet).zfill(2)
+            tmppoly = tmpdict[cslitlet]['frontier']['poly_coef_lower']
+            poldeg_check_list.append(len(tmppoly))
+            tmppoly = tmpdict[cslitlet]['frontier']['poly_coef_upper']
+            poldeg_check_list.append(len(tmppoly))
+            tmppoly = tmpdict[cslitlet]['spectrail']['poly_coef_lower']
+            poldeg_check_list.append(len(tmppoly))
+            tmppoly = tmpdict[cslitlet]['spectrail']['poly_coef_middle']
+            poldeg_check_list.append(len(tmppoly))
+            tmppoly = tmpdict[cslitlet]['spectrail']['poly_coef_upper']
+            poldeg_check_list.append(len(tmppoly))
+        # remove duplicates in list
+        poldeg_no_duplicates = list(set(poldeg_check_list))
+        if len(poldeg_no_duplicates) != 1:
+            print('poldeg_no_duplicates:', order_no_duplicates)
+            raise ValueError('poldeg is not constant in frontiers and '
+                             'spectrails!')
+        poldeg = int(poldeg_no_duplicates[0])
+        if abs(args.debugplot) >= 10:
+            print('>>> poldeg...:', poldeg)
+
+    # ---
+
+    # Interpolate rectification polynomial coefficients
+
+    for islitlet in range(islitlet_min, islitlet_max + 1):
+        cslitlet = 'slitlet' + str(islitlet).zfill(2)
+        for icoef in range(ncoef):
+            list_csu_bar_slit_center = []
+            list_ttd_aij = []
+            for ifile in range(nfiles):
+                tmpdict = list_json_longslits[ifile]['contents'][cslitlet]
+                csu_bar_slit_center = tmpdict['csu_bar_slit_center']
+                ttd_aij = tmpdict['ttd_aij']
+                if ttd_aij is not None:
+                    list_csu_bar_slit_center.append(csu_bar_slit_center)
+                    list_ttd_aij.append(ttd_aij[icoef])
+            poly, yres, reject = polfit_residuals_with_sigma_rejection(
+                x=np.array(list_csu_bar_slit_center),
+                y=np.array(list_ttd_aij),
+                deg=2,
+                times_sigma_reject=5,
+                xlabel='csu_bar_slit_center',
+                ylabel='tti_aij[' + str(icoef) + ']',
+                title=cslitlet,
+                debugplot=0
+            )
+
+    # ---
+
+    # Save resulting JSON structure
+    with open(args.out_json.name, 'w') as fstream:
+        json.dump(outdict, fstream, indent=2, sort_keys=True)
+        print('>>> Saving file ' + args.out_json.name)
 
 
 if __name__ == "__main__":
