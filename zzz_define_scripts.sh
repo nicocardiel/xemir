@@ -30,7 +30,7 @@ alias EMIR_wpoly_from_longslit=\
 alias EMIR_rect_wpoly_for_mos=\
 'python ~/s/xemir/rect_wpoly_for_mos.py'
 
-# apply rectification and wavelength calibration transformations
-alias EMIR_apply_rect_wpoly=\
-'python ~/s/xemir/apply_rect_wpoly.py'
+# evaluate rectification and wavelength calibration transformations
+alias EMIR_evaluate_rect_wpoly=\
+'python ~/s/xemir/evaluate_rect_wpoly.py'
 
