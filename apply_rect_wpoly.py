@@ -4,6 +4,7 @@ from __future__ import print_function
 import argparse
 from astropy.io import fits
 import json
+import numpy as np
 import sys
 from uuid import uuid4
 
@@ -46,10 +47,14 @@ def main(args=None):
     # read the CSU configuration from the header of the input FITS file
     csu_conf = CsuConfiguration()
     csu_conf.define_from_fits(args.fitsfile)
+    if abs(args.debugplot) >= 10:
+        print(csu_conf)
 
     # read the DTU configuration from the header of the input FITS file
     dtu_conf = DtuConfiguration()
     dtu_conf.define_from_fits(args.fitsfile)
+    if abs(args.debugplot) >= 10:
+        print(dtu_conf)
 
     # read calibration structure from JSON file
     rect_wpoly_dict = json.loads(open(args.json_rect_wpoly.name).read())
@@ -65,7 +70,7 @@ def main(args=None):
         print(dtu_conf_calib)
         raise ValueError("DTU configurations do not match!")
     if abs(args.debugplot) >= 10:
-        print('>>> DTU Configuration math!')
+        print('>>> DTU Configuration match!')
         print(dtu_conf)
 
     # read FITS image and its corresponding header
@@ -93,13 +98,44 @@ def main(args=None):
         print('>>> grism.......:', grism_name)
         print('>>> filter......:', filter_name)
 
-    # compute rectification and wavelength calibration coefficients for each
-    # slitlet according to its csu_bar_slit_center value
+    # read islitlet_min and islitlet_max from input JSON file
     islitlet_min = rect_wpoly_dict['tags']['islitlet_min']
     islitlet_max = rect_wpoly_dict['tags']['islitlet_max']
     if abs(args.debugplot) >= 10:
         print('>>> islitlet_min:', islitlet_min)
         print('>>> islitlet_max:', islitlet_max)
+
+    # compute rectification and wavelength calibration coefficients for each
+    # slitlet according to its csu_bar_slit_center value
+    for islitlet in range(islitlet_min, islitlet_max + 1):
+        # csu_bar_slit_center of current slitlet in initial FITS image
+        csu_bar_slit_center = csu_conf.csu_bar_slit_center[islitlet - 1]
+        # rectification coefficients interpolated at csu_bar_slit_center
+        cslitlet = 'slitlet' + str(islitlet).zfill(2)
+        tmpdict = rect_wpoly_dict['contents'][cslitlet]
+        # rectification coefficients
+        ncoef = len(tmpdict['ttd_aij'])
+        ttd_aij = np.zeros(ncoef)
+        ttd_bij = np.zeros(ncoef)
+        tti_aij = np.zeros(ncoef)
+        tti_bij = np.zeros(ncoef)
+        for icoef in range(ncoef):
+            scoef = str(icoef)
+            tmppol = np.polynomial.Polynomial(tmpdict['ttd_aij'][scoef])
+            ttd_aij[icoef] = tmppol(csu_bar_slit_center)
+            tmppol = np.polynomial.Polynomial(tmpdict['ttd_bij'][scoef])
+            ttd_bij[icoef] = tmppol(csu_bar_slit_center)
+            tmppol = np.polynomial.Polynomial(tmpdict['tti_aij'][scoef])
+            tti_aij[icoef] = tmppol(csu_bar_slit_center)
+            tmppol = np.polynomial.Polynomial(tmpdict['tti_bij'][scoef])
+            tti_bij[icoef] = tmppol(csu_bar_slit_center)
+        # wavelength calibration coefficients
+        ncoef = len(tmpdict['wpoly_coeff'])
+        wpoly_coeff = np.zeros(ncoef)
+        for icoef in range(ncoef):
+            scoef = str(icoef)
+            tmppol = np.polynomial.Polynomial(tmpdict['wpoly_coeff'][scoef])
+            wpoly_coeff[icoef] = tmppol(csu_bar_slit_center)
 
 
 if __name__ == "__main__":
