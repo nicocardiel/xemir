@@ -3,6 +3,7 @@ from __future__ import print_function
 
 import argparse
 from astropy.io import fits
+from datetime import datetime
 import json
 import numpy as np
 import sys
@@ -16,7 +17,7 @@ from numina.array.display.pause_debugplot import DEBUGPLOT_CODES
 
 def main(args=None):
     # parse command-line options
-    parser = argparse.ArgumentParser(prog='apply_rect_wpoly')
+    parser = argparse.ArgumentParser(prog='evaluate_rect_wpoly')
     # required arguments
     parser.add_argument("fitsfile",
                         help="Input FITS file",
@@ -27,9 +28,9 @@ def main(args=None):
                         type=argparse.FileType('r'))
 
     # optional arguments
-    parser.add_argument("--out_rectwv",
-                        help="Rectified and wavelength calibrated output "
-                             "FITS file",
+    parser.add_argument("--out_json",
+                        help="Output JSON file with calibration computed for "
+                             "the input FITS file",
                         type=argparse.FileType('w'))
     parser.add_argument("--debugplot",
                         help="Integer indicating plotting & debugging options"
@@ -105,6 +106,28 @@ def main(args=None):
         print('>>> islitlet_min:', islitlet_min)
         print('>>> islitlet_max:', islitlet_max)
 
+    # Initialize structure to save results into an ouptut JSON file
+    outdict = {}
+    outdict['instrument'] = 'EMIR'
+    outdict['meta-info'] = {}
+    outdict['meta-info']['creation_date'] = datetime.now().isoformat()
+    outdict['meta-info']['description'] = \
+        'wavelength calibration polynomials and rectification ' \
+        'coefficients for a particular FITS file'
+    outdict['meta-info']['recipe_name'] = 'undefined'
+    outdict['meta-info']['origin'] = {}
+    outdict['meta-info']['origin']['fits_frame_uuid'] = 'TBD'
+    outdict['meta-info']['origin']['rect_wpoly_mos_uuid'] = \
+        rect_wpoly_dict['uuid']
+    outdict['tags'] = {}
+    outdict['tags']['grism'] = grism_name
+    outdict['tags']['filter'] = filter_name
+    outdict['tags']['islitlet_min'] = islitlet_min
+    outdict['tags']['islitlet_max'] = islitlet_max
+    outdict['dtu_configuration'] = dtu_conf.outdict()
+    outdict['uuid'] = str(uuid4())
+    outdict['contents'] = {}
+
     # compute rectification and wavelength calibration coefficients for each
     # slitlet according to its csu_bar_slit_center value
     for islitlet in range(islitlet_min, islitlet_max + 1):
@@ -136,6 +159,18 @@ def main(args=None):
             scoef = str(icoef)
             tmppol = np.polynomial.Polynomial(tmpdict['wpoly_coeff'][scoef])
             wpoly_coeff[icoef] = tmppol(csu_bar_slit_center)
+        # store solution in output JSON structure
+        outdict['contents'][cslitlet] = {}
+        outdict['contents'][cslitlet]['ttd_aij'] = ttd_aij.tolist()
+        outdict['contents'][cslitlet]['ttd_bij'] = ttd_bij.tolist()
+        outdict['contents'][cslitlet]['tti_aij'] = tti_aij.tolist()
+        outdict['contents'][cslitlet]['tti_bij'] = tti_bij.tolist()
+        outdict['contents'][cslitlet]['wpoly_coeff'] = wpoly_coeff.tolist()
+
+    # Save resulting JSON structure
+    with open(args.out_json.name, 'w') as fstream:
+        json.dump(outdict, fstream, indent=2, sort_keys=True)
+        print('>>> Saving file ' + args.out_json.name)
 
 
 if __name__ == "__main__":

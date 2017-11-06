@@ -155,13 +155,7 @@ def main(args=None):
     outdict['tags']['filter'] = filter_name
     outdict['tags']['islitlet_min'] = islitlet_min
     outdict['tags']['islitlet_max'] = islitlet_max
-    outdict['dtu_configuration'] = {}
-    outdict['dtu_configuration']['xdtu'] = round(dtu_conf.xdtu, 3)
-    outdict['dtu_configuration']['ydtu'] = round(dtu_conf.ydtu, 3)
-    outdict['dtu_configuration']['zdtu'] = round(dtu_conf.zdtu, 3)
-    outdict['dtu_configuration']['xdtu_0'] = round(dtu_conf.xdtu_0, 3)
-    outdict['dtu_configuration']['ydtu_0'] = round(dtu_conf.ydtu_0, 3)
-    outdict['dtu_configuration']['zdtu_0'] = round(dtu_conf.zdtu_0, 3)
+    outdict['dtu_configuration'] = dtu_conf.outdict()
     outdict['uuid'] = str(uuid4())
     outdict['contents'] = {}
 

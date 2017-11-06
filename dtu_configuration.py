@@ -156,3 +156,17 @@ class DtuConfiguration(object):
 
         # the attributes have been properly set
         self.defined = True
+
+    def outdict(self):
+        """Return dictionary structure rounded to a given precision."""
+
+        outdict = {}
+        if self.defined:
+            outdict['xdtu'] = round(self.xdtu, 3)
+            outdict['ydtu'] = round(self.ydtu, 3)
+            outdict['zdtu'] = round(self.zdtu, 3)
+            outdict['xdtu_0'] = round(self.xdtu_0, 3)
+            outdict['ydtu_0'] = round(self.ydtu_0, 3)
+            outdict['zdtu_0'] = round(self.zdtu_0, 3)
+
+        return outdict
