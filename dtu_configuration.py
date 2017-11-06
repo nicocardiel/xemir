@@ -98,3 +98,34 @@ class DtuConfiguration(object):
 
         # the attributes have been properly set
         self.defined = True
+
+    def define_from_values(self, xdtu, ydtu, zdtu, xdtu_0, ydtu_0, zdtu_0):
+        """Define class members from provided values.
+
+        Parameters
+        ----------
+        xdtu : float
+            XDTU fits keyword value.
+        ydtu : float
+            YDTU fits keyword value.
+        zdtu : float
+            ZDTU fits keyword value.
+        xdtu_0 : float
+            XDTU_0 fits keyword value.
+        ydtu_0 : float
+            YDTU_0 fits keyword value.
+        zdtu_0 : float
+            ZDTU_0 fits keyword value.
+
+        """
+
+        # define DTU variables
+        self.xdtu = xdtu
+        self.ydtu = ydtu
+        self.zdtu = zdtu
+        self.xdtu_0 = xdtu_0
+        self.ydtu_0 = ydtu_0
+        self.zdtu_0 = zdtu_0
+
+        # the attributes have been properly set
+        self.defined = True
