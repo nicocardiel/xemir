@@ -129,3 +129,20 @@ class DtuConfiguration(object):
 
         # the attributes have been properly set
         self.defined = True
+
+    def define_from_dictionary(self, inputdict):
+        """Define class members from dictionary.
+
+        Parameters
+        ----------
+        inputdict : dictionary
+            Python dictionary defining each member of the class.
+
+        """
+
+        for item in self.__dict__:
+            if item != 'defined':
+                self.__dict__[item] = inputdict[item]
+
+        # the attributes have been properly set
+        self.defined = True
