@@ -22,6 +22,7 @@ from numina.array.display.ximshow import ximshow
 from numina.array.distortion import compute_distortion
 from numina.array.distortion import fmap
 from numina.array.distortion import ncoef_fmap
+from numina.array.distortion import rectify2d
 from numina.array.wavecalib.__main__ import read_wv_master_file
 from numina.array.wavecalib.__main__ import wvcal_spectrum
 from numina.array.wavecalib.arccalibration import refine_arccalibration
@@ -903,9 +904,8 @@ class Slitlet2D(object):
             raise ValueError("Unexpected transformation value=" +
                              str(transformation))
 
-        # initialize output array
-        slitlet2d_rect = np.zeros_like(slitlet2d)
-        naxis2, naxis1 = slitlet2d_rect.shape
+        # verify image dimension
+        naxis2, naxis1 = slitlet2d.shape
         if naxis1 != self.bb_nc2_orig - self.bb_nc1_orig + 1:
             raise ValueError("Unexpected slitlet2d_rect naxis1")
         if naxis2 != self.bb_ns2_orig - self.bb_ns1_orig + 1:
@@ -929,34 +929,13 @@ class Slitlet2D(object):
                 aij = self.ttd_aij_modeled
                 bij = self.ttd_bij_modeled
 
-        if resampling == 1:
-            # pixel coordinates (rectified image); since the fmap function
-            # below requires floats, these arrays must use dtype=np.float
-            j = np.arange(0, naxis1, dtype=np.float)
-            i = np.arange(0, naxis2, dtype=np.float)
-            # the cartesian product of the previous 1D arrays could be stored
-            # as np.transpose([xx,yy]), where xx and yy are computed as follows
-            xx = np.tile(j, (len(i),))
-            yy = np.repeat(i, len(j))
-            # compute pixel coordinates in original (distorted) image
-            xxx, yyy = fmap(order, aij, bij, xx, yy)
-            # round to nearest integer and cast to integer; note that the
-            # rounding still provides a float, so the casting is required
-            ixxx = np.rint(xxx).astype(np.int)
-            iyyy = np.rint(yyy).astype(np.int)
-            # determine pixel coordinates within available image
-            lxxx = np.logical_and(ixxx >= 0, ixxx < naxis1)
-            lyyy = np.logical_and(iyyy >= 0, iyyy < naxis2)
-            lok = np.logical_and(lxxx, lyyy)
-            # assign pixel values to rectified image
-            ixx = xx.astype(np.int)[lok]
-            iyy = yy.astype(np.int)[lok]
-            ixxx = ixxx[lok]
-            iyyy = iyyy[lok]
-            slitlet2d_rect[iyy, ixx] = slitlet2d[iyyy, ixxx]
-        else:
-            raise ValueError("Sorry, this resampling method has not been"
-                             " implemented yet!")
+        # rectify image
+        slitlet2d_rect = rectify2d(
+            image2d=slitlet2d,
+            aij=aij,
+            bij=bij,
+            resampling=resampling
+        )
 
         if abs(self.debugplot % 10) != 0:
             title = "Slitlet#" + str(self.islitlet) + " (rectify)"
