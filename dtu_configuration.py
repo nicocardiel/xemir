@@ -5,7 +5,7 @@ from astropy.io import fits
 
 
 class DtuConfiguration(object):
-    """DTU Configuration class definition.
+    """Detector Translation Unit (DTU) Configuration class definition.
 
     Attributes
     ----------
