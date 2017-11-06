@@ -48,7 +48,7 @@ class DtuConfiguration(object):
             output += strdum
             strdum = "- YDTU_0: {0:8.3f}\n".format(self.ydtu_0)
             output += strdum
-            strdum = "- ZDTU_0: {0:8.3f}\n".format(self.zdtu_0)
+            strdum = "- ZDTU_0: {0:8.3f}".format(self.zdtu_0)
             output += strdum
         else:
             output += "- XDTU..:  None\n"
@@ -56,7 +56,7 @@ class DtuConfiguration(object):
             output += "- ZDTU..:  None\n"
             output += "- XDTU_0:  None\n"
             output += "- YDTU_0:  None\n"
-            output += "- ZDTU_0:  None\n"
+            output += "- ZDTU_0:  None"
         return output
 
     def __eq__(self, other):
