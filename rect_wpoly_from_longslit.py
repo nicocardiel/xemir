@@ -309,7 +309,7 @@ class Slitlet2D_LS_Arc(object):
         """Define printable representation of a Slitlet2D_LS_Arc instance."""
 
         # string with all the information
-        output = "<Slilet2D instance>\n" + \
+        output = "<Slitlet2D_LS_Arc instance>\n" + \
             "- islitlet....................: " + \
                  str(self.islitlet) + "\n" + \
             "- csu_bar_left................: " + \
