@@ -1,6 +1,9 @@
 from __future__ import division
 from __future__ import print_function
 
+from emir_definitions import VALID_FILTERS
+from emir_definitions import VALID_GRISMS
+
 
 def set_wv_enlarged_parameters(filter_name, grism_name):
     """Set wavelength calibration parameters for rectified images.
@@ -25,6 +28,13 @@ def set_wv_enlarged_parameters(filter_name, grism_name):
 
     """
 
+    # protections
+    if filter_name not in VALID_FILTERS:
+        raise ValueError('Unexpected filter_name:', filter_name)
+    if grism_name not in VALID_GRISMS:
+        raise ValueError('Unexpected grism_name:', grism_name)
+
+    # set parameters
     crpix1_enlarged = 1.0
     if grism_name == "J" and filter_name == "J":
         crval1_enlarged = 11220.0000  # Angstroms
