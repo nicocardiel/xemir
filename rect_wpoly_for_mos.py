@@ -9,11 +9,13 @@ import sys
 from uuid import uuid4
 
 from numina.array.display.fileinfo import list_fileinfo_from_txt
+from numina.array.display.pause_debugplot import pause_debugplot
 from numina.array.display.polfit_residuals import \
     polfit_residuals_with_sigma_rejection
 from numina.array.distortion import ncoef_fmap
 
 from dtu_configuration import DtuConfiguration
+from fit_boundaries import bound_params_from_dict
 
 from numina.array.display.pause_debugplot import DEBUGPLOT_CODES
 
@@ -47,6 +49,9 @@ def main(args=None):
     parser.add_argument("input_list",
                         help="TXT file with list JSON files derived from "
                              "longslit data")
+    parser.add_argument("--fitted_bound_param", required=True,
+                        help="Input JSON with fitted boundary parameters",
+                        type=argparse.FileType('r'))
     parser.add_argument("--out_MOSlibrary", required=True,
                         help="Output JSON file with results",
                         type=argparse.FileType('w'))
@@ -76,7 +81,19 @@ def main(args=None):
     if nfiles < 2:
         raise ValueError("Insufficient number of input JSON files")
 
-    # protections: check consistency of grism, filter and DTU configuration
+    # read fitted boundary parameters and check that all the longslit JSON
+    # files have been computed using the same fitted boundary parameters
+    fitted_bound_param = json.loads(open(args.fitted_bound_param.name).read())
+    fitted_bound_param_uuid = fitted_bound_param['uuid']
+    for ifile in range(nfiles):
+        json_tmp = json.loads(open(list_json_files[ifile].filename).read())
+        uuid_tmp = json_tmp['meta-info']['origin']['fitted_bound_param_uuid']
+        if uuid_tmp != fitted_bound_param_uuid:
+            print('Expected uuid:', fitted_bound_param_uuid)
+            print('uuid for islitlet #' + str(ifile) + ": " + uuid_tmp)
+            raise ValueError("Fitted boundary parameter uuid's do not match")
+
+    # check consistency of grism, filter and DTU configuration
     json_first_longslit = json.loads(open(list_json_files[0].filename).read())
     dtu_conf = DtuConfiguration()
     dtu_conf.define_from_dictionary(json_first_longslit['dtu_configuration'])
@@ -136,6 +153,7 @@ def main(args=None):
 
     # Initialize structure to save results into an ouptut JSON file
     outdict = {}
+    outdict['fitted_bound_param'] = fitted_bound_param
     outdict['instrument'] = 'EMIR'
     outdict['meta-info'] = {}
     outdict['meta-info']['creation_date'] = datetime.now().isoformat()
