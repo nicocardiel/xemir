@@ -13,6 +13,7 @@ from numina.array.distortion import order_fmap
 from numina.array.distortion import rectify2d
 from numina.array.wavecalib.resample import resample_image2d_flux
 
+from dtu_configuration import DtuConfiguration
 from rect_wpoly_for_mos import islitlet_progress
 from save_ndarray_to_fits import save_ndarray_to_fits
 from set_wv_enlarged_parameters import set_wv_enlarged_parameters
@@ -379,6 +380,10 @@ def main(args=None):
                              "wavelength calibrated image",
                         type=argparse.FileType('w'))
     # optional arguments
+    parser.add_argument("--verify_arc",
+                        help="Verify wavelength calibration (input FITS file "
+                             "must be an arc exposure)",
+                        action="store_true")
     parser.add_argument("--debugplot",
                         help="Integer indicating plotting & debugging options"
                              " (default=0)",
@@ -421,6 +426,17 @@ def main(args=None):
     if abs(args.debugplot) >= 10:
         print('>>> grism.......:', grism_name)
         print('>>> filter......:', filter_name)
+
+    # check that DTU configuration is compatible
+    dtu_conf_fitsfile = DtuConfiguration()
+    dtu_conf_fitsfile.define_from_fits(args.fitsfile)
+    dtu_conf_jsonfile = DtuConfiguration()
+    dtu_conf_jsonfile.define_from_dictionary(
+        rect_wpoly_dict['dtu_configuration'])
+    if dtu_conf_fitsfile != dtu_conf_jsonfile:
+        print('DTU configuration (FITS file):\n\t', dtu_conf_fitsfile)
+        print('DTU configuration (JSON file):\n\t', dtu_conf_jsonfile)
+        raise ValueError('Incompatible DTU configurations')
 
     # read islitlet_min and islitlet_max from input JSON file
     islitlet_min = rect_wpoly_dict['tags']['islitlet_min']
@@ -491,6 +507,12 @@ def main(args=None):
         overwrite=True
     )
     print('>>> Saving file ' + args.outfile.name)
+
+    # ---
+
+    # ToDo: continue here!
+    if args.verify_arc:
+        pass
 
 
 if __name__ == "__main__":
