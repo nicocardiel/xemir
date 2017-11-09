@@ -11,6 +11,8 @@ from numina.array.display.pause_debugplot import pause_debugplot
 from numina.array.display.ximshow import ximshow
 from numina.array.distortion import order_fmap
 
+from rect_wpoly_for_mos import islitlet_progress
+
 from emir_definitions import NAXIS1_EMIR
 from emir_definitions import NAXIS2_EMIR
 
@@ -294,6 +296,58 @@ class Slitlet2D(object):
         return slitlet2d
 
 
+def wv_enlarged_parameters(filter_name, grism_name):
+    """Set wavelength calibration parameters for rectified images.
+
+    Parameters
+    ----------
+    filter_name : str
+        Filter name.
+    grism_name : str
+        Grism name.
+
+    Returns
+    -------
+    crpix1_enlarged : float
+        CRPIX1 value.
+    crval1_enlarged : float
+        CRVAL1 value.
+    cdelt1_enlarged : float
+        CDELT1 value.
+    naxis1_enlarged: int
+        NAXIS1 value.
+
+    """
+
+    crpix1_enlarged = 1.0
+    if grism_name == "J" and filter_name == "J":
+        crval1_enlarged = 11220.0000  # Angstroms
+        cdelt1_enlarged = 0.7575      # Angstroms/pixel
+        naxis1_enlarged = 3400        # pixels
+    elif grism_name == "H" and filter_name == "H":
+        crval1_enlarged = None  # 14000.0000  # Angstroms
+        cdelt1_enlarged = 1.2000      # Angstroms/pixel
+        naxis1_enlarged = 3400        # pixels
+    elif grism_name == "K" and filter_name == "Ksp":
+        crval1_enlarged = None  # 19000.0000  # Angstroms
+        cdelt1_enlarged = 1.7000      # Angstroms/pixel
+        naxis1_enlarged = 3400        # pixels
+    elif grism_name == "LR" and filter_name == "YJ":
+        crval1_enlarged = None        # Angstroms
+        cdelt1_enlarged = None        # Angstroms/pixel
+        naxis1_enlarged = None        # pixels
+    elif grism_name == "LR" and filter_name == "HK":
+        crval1_enlarged = None        # Angstroms
+        cdelt1_enlarged = None        # Angstroms/pixel
+        naxis1_enlarged = None        # pixels
+    else:
+        print("filter_name..:", filter_name)
+        print("grism_name...:", grism_name)
+        raise ValueError("invalid grism_name and filter_name combination")
+
+    return crpix1_enlarged, crval1_enlarged, cdelt1_enlarged, naxis1_enlarged
+
+
 def main(args=None):
     # parse command-line options
     parser = argparse.ArgumentParser(prog='evaluate_rect_wpoly')
@@ -335,7 +389,9 @@ def main(args=None):
     # protections
     naxis2, naxis1 = image2d.shape
     if naxis1 != header['naxis1'] or naxis2 != header['naxis2']:
-        print('Something is wrong with NAXIS1 and/or NAXIS2')
+        print('>>> NAXIS1:', naxis1)
+        print('>>> NAXIS2:', naxis2)
+        raise ValueError('Something is wrong with NAXIS1 and/or NAXIS2')
     if abs(args.debugplot) >= 10:
         print('>>> NAXIS1:', naxis1)
         print('>>> NAXIS2:', naxis2)
@@ -360,16 +416,27 @@ def main(args=None):
 
     # ---
 
+    # relevant wavelength calibration parameters for rectified image
+    crpix1_enlarged, crval1_enlarged, cdelt1_enlarged, naxis1_enlarged = \
+        wv_enlarged_parameters(filter_name, grism_name)
+
+    # initialize rectified image
+    image2d_rectified_wv = np.zeros((NAXIS2_EMIR, naxis1_enlarged))
+
     # main loop
     for islitlet in range(islitlet_min, islitlet_max + 1):
+        if args.debugplot == 0:
+            islitlet_progress(islitlet, islitlet_max)
 
         # define Slitlet2D object
         slt = Slitlet2D(islitlet=islitlet,
                         megadict=rect_wpoly_dict,
                         ymargin=2,
                         debugplot=args.debugplot)
-        print(slt)
-        slitlet2d = slt.extract_slitlet2d(image2d)
+
+        if abs(args.debugplot) >= 10:
+            print(slt)
+            slitlet2d = slt.extract_slitlet2d(image2d)
 
         pause_debugplot(args.debugplot)
 
