@@ -8,6 +8,7 @@ import numpy as np
 import sys
 
 from numina.array.display.pause_debugplot import pause_debugplot
+from numina.array.display.ximshow import ximshow
 from numina.array.distortion import order_fmap
 
 from emir_definitions import NAXIS1_EMIR
@@ -238,6 +239,60 @@ class Slitlet2D(object):
 
         return output
 
+    def extract_slitlet2d(self, image_2k2k):
+        """Extract slitlet 2d image from image with original EMIR dimensions.
+
+        Parameters
+        ----------
+        image_2k2k : 2d numpy array, float
+            Original image (dimensions NAXIS1_EMIR * NAXIS2_EMIR)
+
+        Returns
+        -------
+        slitlet2d : 2d numpy array, float
+            Image corresponding to the slitlet region defined by its
+            bounding box.
+
+        """
+
+        # protections
+        naxis2, naxis1 = image_2k2k.shape
+        if naxis1 != NAXIS1_EMIR:
+            raise ValueError('Unexpected naxis1')
+        if naxis2 != NAXIS2_EMIR:
+            raise ValueError('Unexpected naxis2')
+
+        # extract slitlet region
+        slitlet2d = image_2k2k[(self.bb_ns1_orig - 1):self.bb_ns2_orig,
+                    (self.bb_nc1_orig - 1):self.bb_nc2_orig]
+
+        # transform to float
+        slitlet2d = slitlet2d.astype(np.float)
+
+        # display slitlet2d with boundaries and middle spectrum trail
+        if abs(self.debugplot) in [21, 22]:
+            ax = ximshow(slitlet2d, title="Slitlet#" + str(self.islitlet),
+                         first_pixel=(self.bb_nc1_orig, self.bb_ns1_orig),
+                         show=False)
+            xdum = np.linspace(1, NAXIS1_EMIR, num=NAXIS1_EMIR)
+            ylower = \
+                self.list_spectrails[0](xdum)
+            ax.plot(xdum, ylower, 'b-')
+            ymiddle = \
+                self.list_spectrails[1](xdum)
+            ax.plot(xdum, ymiddle, 'b--')
+            yupper = \
+                self.list_spectrails[2](xdum)
+            ax.plot(xdum, yupper, 'b-')
+            ylower_frontier = self.list_frontiers[0](xdum)
+            ax.plot(xdum, ylower_frontier, 'b:')
+            yupper_frontier = self.list_frontiers[1](xdum)
+            ax.plot(xdum, yupper_frontier, 'b:')
+            pause_debugplot(debugplot=self.debugplot, pltshow=True)
+
+        # return slitlet image
+        return slitlet2d
+
 
 def main(args=None):
     # parse command-line options
@@ -311,10 +366,13 @@ def main(args=None):
         # define Slitlet2D object
         slt = Slitlet2D(islitlet=islitlet,
                         megadict=rect_wpoly_dict,
-                        ymargin=5,
+                        ymargin=2,
                         debugplot=args.debugplot)
         print(slt)
+        slitlet2d = slt.extract_slitlet2d(image2d)
+
         pause_debugplot(args.debugplot)
+
 
 
 if __name__ == "__main__":
