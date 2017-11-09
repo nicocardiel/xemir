@@ -9,8 +9,14 @@ import numpy as np
 import sys
 from uuid import uuid4
 
+from numina.array.display.pause_debugplot import pause_debugplot
+
 from csu_configuration import CsuConfiguration
 from dtu_configuration import DtuConfiguration
+from fit_boundaries import bound_params_from_dict
+from fit_boundaries import expected_distorted_boundaries
+from fit_boundaries import expected_distorted_frontiers
+from rect_wpoly_for_mos import islitlet_progress
 
 from numina.array.display.pause_debugplot import DEBUGPLOT_CODES
 
@@ -118,6 +124,8 @@ def main(args=None):
     outdict['meta-info']['origin']['fits_frame_uuid'] = 'TBD'
     outdict['meta-info']['origin']['rect_wpoly_mos_uuid'] = \
         rect_wpoly_dict['uuid']
+    outdict['meta-info']['origin']['fitted_boundary_param_uuid'] = \
+        rect_wpoly_dict['fitted_bound_param']['uuid']
     outdict['tags'] = {}
     outdict['tags']['grism'] = grism_name
     outdict['tags']['filter'] = filter_name
@@ -125,17 +133,17 @@ def main(args=None):
     outdict['tags']['islitlet_max'] = islitlet_max
     outdict['dtu_configuration'] = dtu_conf.outdict()
     outdict['csu_configuration'] = csu_conf.outdict()
-    outdict['fitted_bound_param'] = rect_wpoly_dict['fitted_bound_param']
     outdict['uuid'] = str(uuid4())
     outdict['contents'] = {}
 
     # compute rectification and wavelength calibration coefficients for each
     # slitlet according to its csu_bar_slit_center value
     for islitlet in range(islitlet_min, islitlet_max + 1):
+        islitlet_progress(islitlet, islitlet_max)
+        cslitlet = 'slitlet' + str(islitlet).zfill(2)
         # csu_bar_slit_center of current slitlet in initial FITS image
         csu_bar_slit_center = csu_conf.csu_bar_slit_center[islitlet - 1]
         # rectification coefficients interpolated at csu_bar_slit_center
-        cslitlet = 'slitlet' + str(islitlet).zfill(2)
         tmpdict = rect_wpoly_dict['contents'][cslitlet]
         # rectification coefficients
         ncoef = len(tmpdict['ttd_aij'])
@@ -167,6 +175,40 @@ def main(args=None):
         outdict['contents'][cslitlet]['tti_aij'] = tti_aij.tolist()
         outdict['contents'][cslitlet]['tti_bij'] = tti_bij.tolist()
         outdict['contents'][cslitlet]['wpoly_coeff'] = wpoly_coeff.tolist()
+
+    # for each slitlet compute spectrum trails and frontiers using the
+    # fitted boundary parameters
+    fitted_bound_param = rect_wpoly_dict['fitted_bound_param']
+    parmodel = fitted_bound_param['meta-info']['parmodel']
+    params = bound_params_from_dict(fitted_bound_param)
+    if abs(args.debugplot) >= 10:
+        print('* Fitted boundary parameters:')
+        params.pretty_print()
+    for islitlet in range(islitlet_min, islitlet_max + 1):
+        islitlet_progress(islitlet, islitlet_max)
+        cslitlet = 'slitlet' + str(islitlet).zfill(2)
+        # csu_bar_slit_center of current slitlet in initial FITS image
+        csu_bar_slit_center = csu_conf.csu_bar_slit_center[islitlet - 1]
+        # compute spectrum trails (lower, middle and upper)
+        list_spectrails = expected_distorted_boundaries(
+            islitlet, csu_bar_slit_center,
+            [0, 0.5, 1], params, parmodel,
+            numpts=101, deg=5, debugplot=0
+        )
+        # store spectrails in output JSON file
+        for idum, cdum in zip(range(3), ['lower', 'middle', 'upper']):
+            outdict['contents'][cslitlet]['spectrail_' + cdum] = \
+                list_spectrails[idum].poly_funct.coef.tolist()
+        # compute frontiers (lower, upper)
+        list_frontiers = expected_distorted_frontiers(
+            islitlet, csu_bar_slit_center,
+            params, parmodel,
+            numpts=101, deg=5, debugplot=0
+        )
+        # store frontiers in output JSON
+        for idum, cdum in zip(range(2), ['lower', 'upper']):
+            outdict['contents'][cslitlet]['frontier_' + cdum] = \
+                list_frontiers[idum].poly_funct.coef.tolist()
 
     # Save resulting JSON structure
     with open(args.out_rect_wpoly.name, 'w') as fstream:
