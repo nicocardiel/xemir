@@ -244,7 +244,7 @@ class Slitlet2D(object):
 
         # compute frontiers (lower and upper)
         self.list_frontiers = expected_distorted_frontiers(
-            islitlet, self.csu_bar_left,
+            islitlet, self.csu_bar_slit_center,
             params, parmodel,
             numpts=101, deg=5, debugplot=0
         )
