@@ -35,8 +35,6 @@ from ccd_line import intersection_spectrail_arcline
 from csu_configuration import CsuConfiguration
 from csu_configuration import merge_odd_even_csu_configurations
 from dtu_configuration import DtuConfiguration
-from emir_definitions import NAXIS1_EMIR
-from emir_definitions import NAXIS2_EMIR
 from fit_boundaries import bound_params_from_dict
 from fit_boundaries import expected_distorted_boundaries
 from fit_boundaries import expected_distorted_frontiers
@@ -45,6 +43,8 @@ from rescale_array_to_z1z2 import rescale_array_from_z1z2
 from save_ndarray_to_fits import save_ndarray_to_fits
 
 from numina.array.display.pause_debugplot import DEBUGPLOT_CODES
+from emir_definitions import NAXIS1_EMIR
+from emir_definitions import NAXIS2_EMIR
 
 
 class Slitlet2D_LS_Arc(object):
@@ -410,7 +410,7 @@ class Slitlet2D_LS_Arc(object):
         Parameters
         ----------
         image_2k2k : 2d numpy array, float
-            Original image (dimensions NAXIS1 * NAXIS2)
+            Original image (dimensions NAXIS1_EMIR * NAXIS2_EMIR)
 
         Returns
         -------
@@ -419,6 +419,13 @@ class Slitlet2D_LS_Arc(object):
             bounding box.
 
         """
+
+        # protections
+        naxis2, naxis1 = image_2k2k.shape
+        if naxis1 != NAXIS1_EMIR:
+            raise ValueError('Unexpected naxis1')
+        if naxis2 != NAXIS2_EMIR:
+            raise ValueError('Unexpected naxis2')
 
         # extract slitlet region
         slitlet2d = image_2k2k[(self.bb_ns1_orig - 1):self.bb_ns2_orig,
