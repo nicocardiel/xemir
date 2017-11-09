@@ -22,8 +22,8 @@ alias EMIR_slitlet_boundaries_from_continuum=\
 
 # compute wavelength calibration polynomials and rectification transformation
 # from longslits observed with odd-numbered and even-numbered slitlets
-alias EMIR_wpoly_from_longslit=\
-'python ~/s/xemir/wpoly_from_longslit.py'
+alias EMIR_rect_wpoly_from_longslit=\
+'python ~/s/xemir/rect_wpoly_from_longslit.py'
 
 # variation of each coefficient of rectication and wavelength calibration
 # transformations as a function of csu_bar_slit_center
