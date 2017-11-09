@@ -210,6 +210,8 @@ class Slitlet2D_LS_Arc(object):
 
         # slitlet number
         self.islitlet = islitlet
+
+        # csu configuration
         self.csu_bar_left = csu_conf.csu_bar_left[islitlet - 1]
         self.csu_bar_right = csu_conf.csu_bar_right[islitlet - 1]
         self.csu_bar_slit_center = csu_conf.csu_bar_slit_center[islitlet - 1]
