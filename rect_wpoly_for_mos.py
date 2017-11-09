@@ -9,13 +9,11 @@ import sys
 from uuid import uuid4
 
 from numina.array.display.fileinfo import list_fileinfo_from_txt
-from numina.array.display.pause_debugplot import pause_debugplot
 from numina.array.display.polfit_residuals import \
     polfit_residuals_with_sigma_rejection
 from numina.array.distortion import ncoef_fmap
 
 from dtu_configuration import DtuConfiguration
-from fit_boundaries import bound_params_from_dict
 
 from numina.array.display.pause_debugplot import DEBUGPLOT_CODES
 
