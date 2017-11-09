@@ -8,7 +8,7 @@ import numpy as np
 import sys
 
 from numina.array.display.pause_debugplot import pause_debugplot
-from numina.array.distortion import ncoef_fmap
+from numina.array.distortion import order_fmap
 
 from emir_definitions import NAXIS1_EMIR
 from emir_definitions import NAXIS2_EMIR
@@ -174,15 +174,7 @@ class Slitlet2D(object):
         self.tti_bij = tmpcontent['tti_bij']
         # determine order from number of coefficients
         ncoef = len(self.ttd_aij)
-        self.ttd_order = 0
-        loop = True
-        while loop:
-            ncoef_tmp = ncoef_fmap(self.ttd_order)
-            loop = (ncoef != ncoef_tmp)
-            if loop:
-                self.ttd_order += 1
-                if self.ttd_order > 4:
-                    raise ValueError("Order too high")
+        self.ttd_order = order_fmap(ncoef)
 
         # Wavelength calibration coefficients
         self.wpoly = tmpcontent['wpoly_coeff']
