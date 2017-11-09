@@ -427,7 +427,7 @@ def main(args=None):
         print('>>> grism.......:', grism_name)
         print('>>> filter......:', filter_name)
 
-    # check that DTU configuration is compatible
+    # check that the DTU configurations are compatible
     dtu_conf_fitsfile = DtuConfiguration()
     dtu_conf_fitsfile.define_from_fits(args.fitsfile)
     dtu_conf_jsonfile = DtuConfiguration()
@@ -499,11 +499,22 @@ def main(args=None):
         i2 = i1 + ii2 - ii1
         image2d_rectified_wv[i1:i2, :] = slitlet2d_rect_wv[ii1:ii2, :]
 
+        # include scan range in FITS header
+        header['nsmin' + str(islitlet).zfill(2)] = i1
+        header['nsmax' + str(islitlet).zfill(2)] = i2 - 1
+
         pause_debugplot(args.debugplot)
+
+    # update wavelength calibration in FITS header
+    # ToDo: store values without deleting the original WCS information!
+    header['crpix1'] = crpix1_enlarged
+    header['crval1'] = crval1_enlarged
+    header['cdelt1'] = cdelt1_enlarged
 
     save_ndarray_to_fits(
         array=image2d_rectified_wv,
         file_name=args.outfile,
+        main_header=header,
         overwrite=True
     )
     print('>>> Saving file ' + args.outfile.name)
@@ -512,7 +523,8 @@ def main(args=None):
 
     # ToDo: continue here!
     if args.verify_arc:
-        pass
+        for islitlet in range(islitlet_min, islitlet_max + 1):
+            pass
 
 
 if __name__ == "__main__":
