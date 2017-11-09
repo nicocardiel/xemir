@@ -125,6 +125,7 @@ def main(args=None):
     outdict['tags']['islitlet_max'] = islitlet_max
     outdict['dtu_configuration'] = dtu_conf.outdict()
     outdict['csu_configuration'] = csu_conf.outdict()
+    outdict['fitted_bound_param'] = rect_wpoly_dict['fitted_bound_param']
     outdict['uuid'] = str(uuid4())
     outdict['contents'] = {}
 
