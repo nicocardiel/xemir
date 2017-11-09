@@ -7,6 +7,9 @@ import json
 import numpy as np
 import sys
 
+from numina.array.display.pause_debugplot import pause_debugplot
+from numina.array.distortion import ncoef_fmap
+
 from emir_definitions import NAXIS1_EMIR
 from emir_definitions import NAXIS2_EMIR
 
@@ -62,19 +65,11 @@ class Slitlet2D(object):
         X coordinate where the rectified y0_reference_middle is computed
         as the Y coordinate of the middle spectrum trail. The same value
         is used for all the available spectrum trails.
-    ilower_spectrail : int
-        Index indicating where the lower spectrail is stored within
-        list_spectrails.
-    imiddle_spectrail : int
-        Index indicating where the middle spectrail is stored within
-        list_spectrails.
-    iupper_spectrail : int
-        Index indicating where the upper spectrail is stored within
-        list_spectrails.
-    list_spectrails: list of SpectrumTrail instances
-        List of spectrum trails defined.
-    list_frontiers: list of SpectrumTrail instances
-        List of spectrum trails defining the slitlet frontiers.
+    list_spectrails: list of numpy.polynomial.Polynomial instances
+        List of spectrum trails defined (lower, middle and upper).
+    list_frontiers: list of numpy.polynomial.Polynomial instances
+        List of spectrum trails defining the slitlet frontiers (lower
+        and upper).
     y0_reference_lower: float
         Y coordinate corresponding to the lower spectrum trail computed
         at x0_reference. This value is employed as the Y coordinate of
@@ -172,8 +167,84 @@ class Slitlet2D(object):
         if self.bb_ns2_orig > NAXIS2_EMIR:
             self.bb_ns2_orig = NAXIS2_EMIR
 
+        # Rectification coefficients
+        self.ttd_aij = tmpcontent['ttd_aij']
+        self.ttd_bij = tmpcontent['ttd_bij']
+        self.tti_aij = tmpcontent['tti_aij']
+        self.tti_bij = tmpcontent['tti_bij']
+        # determine order from number of coefficients
+        ncoef = len(self.ttd_aij)
+        self.ttd_order = 0
+        loop = True
+        while loop:
+            ncoef_tmp = ncoef_fmap(self.ttd_order)
+            loop = (ncoef != ncoef_tmp)
+            if loop:
+                self.ttd_order += 1
+                if self.ttd_order > 4:
+                    raise ValueError("Order too high")
+
+        # Wavelength calibration coefficients
+        self.wpoly = tmpcontent['wpoly_coeff']
+
         # debugplot
         self.debugplot = debugplot
+
+    def __repr__(self):
+        """Define printable representation of a Slitlet2D instance."""
+
+        # string with all the information
+        output = "<Slilet2D instance>\n" + \
+            "- islitlet...........: " + \
+                 str(self.islitlet) + "\n" + \
+            "- csu_bar_left.......: " + \
+                 str(self.csu_bar_left) + "\n" + \
+            "- csu_bar_right......: " + \
+                 str(self.csu_bar_right) + "\n" + \
+            "- csu_bar_slit_center: " + \
+                 str(self.csu_bar_slit_center) + "\n" + \
+            "- csu_bar_slit_width.: " + \
+                 str(self.csu_bar_slit_width) + "\n" + \
+            "- x0_reference.......: " + \
+                 str(self.x0_reference) + "\n" + \
+            "- y0_reference_lower.: " + \
+                str(self.y0_reference_lower) + "\n" + \
+            "- y0_reference_middle: " + \
+                 str(self.y0_reference_middle) + "\n" + \
+            "- y0_reference_upper.: " + \
+                 str(self.y0_reference_upper) + "\n" + \
+            "- y0_frontier_lower..: " + \
+                 str(self.y0_frontier_lower) + "\n" + \
+            "- y0_frontier_upper..: " + \
+                 str(self.y0_frontier_upper) + "\n" + \
+            "- bb_nc1_orig........: " + \
+                 str(self.bb_nc1_orig) + "\n" + \
+            "- bb_nc2_orig........: " + \
+                 str(self.bb_nc2_orig) + "\n" + \
+            "- bb_ns1_orig........: " + \
+                 str(self.bb_ns1_orig) + "\n" + \
+            "- bb_ns2_orig........: " + \
+                 str(self.bb_ns2_orig) + "\n" + \
+            "- lower spectrail....:\n\t" + \
+                 str(self.list_spectrails[0]) + "\n" + \
+            "- middle spectrail...:\n\t" + \
+                 str(self.list_spectrails[1]) + "\n" + \
+            "- upper spectrail....:\n\t" + \
+                 str(self.list_spectrails[2]) + "\n" + \
+            "- lower frontier.....:\n\t" + \
+                str(self.list_frontiers[0]) + "\n" + \
+            "- upper frontier.....:\n\t" + \
+                str(self.list_frontiers[1]) + "\n" + \
+            "- ttd_order..........: " + str(self.ttd_order) + "\n" + \
+            "- ttd_aij............:\n\t" + str(self.ttd_aij) + "\n" + \
+            "- ttd_bij............:\n\t" + str(self.ttd_bij) + "\n" + \
+            "- tti_aij............:\n\t" + str(self.tti_aij) + "\n" + \
+            "- tti_bij............:\n\t" + str(self.tti_bij) + "\n" + \
+            "- wpoly..............:\n\t" + str(self.wpoly) + "\n" + \
+            "- debugplot...................: " + \
+            str(self.debugplot)
+
+        return output
 
 
 def main(args=None):
@@ -250,6 +321,8 @@ def main(args=None):
                         megadict=rect_wpoly_dict,
                         ymargin=5,
                         debugplot=args.debugplot)
+        print(slt)
+        pause_debugplot(args.debugplot)
 
 
 if __name__ == "__main__":
