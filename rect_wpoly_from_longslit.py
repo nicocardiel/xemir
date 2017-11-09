@@ -1641,6 +1641,8 @@ def main(args=None):
             sys.stdout.write('\n')
         sys.stdout.flush()
 
+        # minimum and maximum useful scan (pixel in the spatial direction)
+        # for the rectified slitlet
         nscan_min = int(slt.y0_frontier_lower + 0.5)
         if nscan_min < 1:
             raise ValueError("nscan_min=" + str(nscan_min) + " is < 1")

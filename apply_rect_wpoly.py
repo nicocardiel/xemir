@@ -11,8 +11,10 @@ from numina.array.display.pause_debugplot import pause_debugplot
 from numina.array.display.ximshow import ximshow
 from numina.array.distortion import order_fmap
 from numina.array.distortion import rectify2d
+from numina.array.wavecalib.resample import resample_image2d_flux
 
 from rect_wpoly_for_mos import islitlet_progress
+from save_ndarray_to_fits import save_ndarray_to_fits
 from set_wv_enlarged_parameters import set_wv_enlarged_parameters
 
 from emir_definitions import NAXIS1_EMIR
@@ -373,7 +375,7 @@ def main(args=None):
                         help="Input JSON file with rectification and "
                              "wavelength calibration coefficients",
                         type=argparse.FileType('r'))
-    parser.add_argument("--outfile",
+    parser.add_argument("--outfile", required=True,
                         help="Output FITS file with rectified and "
                              "wavelength calibrated image",
                         type=argparse.FileType('w'))
@@ -451,11 +453,45 @@ def main(args=None):
         if abs(args.debugplot) >= 10:
             print(slt)
 
+        # extract (distorted) slitlet from the initial image
         slitlet2d = slt.extract_slitlet2d(image2d)
+
+        # rectify slitlet
         slitlet2d_rect = slt.rectify(slitlet2d, resampling=1)
+
+        # wavelength calibration of the rectifed slitlet
+        slitlet2d_rect_wv = resample_image2d_flux(
+            image2d_orig=slitlet2d_rect,
+            naxis1=naxis1_enlarged,
+            cdelt1=cdelt1_enlarged,
+            crval1=crval1_enlarged,
+            crpix1=crpix1_enlarged,
+            coeff=slt.wpoly
+        )
+
+        # minimum and maximum useful scan (pixel in the spatial direction)
+        # for the rectified slitlet
+        nscan_min = int(slt.y0_frontier_lower + 0.5)
+        if nscan_min < 1:
+            raise ValueError("nscan_min=" + str(nscan_min) + " is < 1")
+        nscan_max = int(slt.y0_frontier_upper + 0.5)
+        if nscan_max > NAXIS2_EMIR:
+            raise ValueError("nscan_min=" + str(nscan_max) +
+                             " is > NAXIS2_EMIR=" + str(NAXIS2_EMIR))
+        ii1 = nscan_min - slt.bb_ns1_orig
+        ii2 = nscan_max - slt.bb_ns1_orig + 1
+        i1 = slt.bb_ns1_orig - 1 + ii1
+        i2 = i1 + ii2 - ii1
+        image2d_rectified_wv[i1:i2, :] = slitlet2d_rect_wv[ii1:ii2, :]
 
         pause_debugplot(args.debugplot)
 
+    save_ndarray_to_fits(
+        array=image2d_rectified_wv,
+        file_name=args.outfile,
+        overwrite=True
+    )
+    print('>>> Saving file ' + args.outfile.name)
 
 
 if __name__ == "__main__":
