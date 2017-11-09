@@ -207,7 +207,7 @@ class Slitlet2D(object):
             "- x0_reference.......: " + \
                  str(self.x0_reference) + "\n" + \
             "- y0_reference_lower.: " + \
-                str(self.y0_reference_lower) + "\n" + \
+                 str(self.y0_reference_lower) + "\n" + \
             "- y0_reference_middle: " + \
                  str(self.y0_reference_middle) + "\n" + \
             "- y0_reference_upper.: " + \
@@ -231,9 +231,9 @@ class Slitlet2D(object):
             "- upper spectrail....:\n\t" + \
                  str(self.list_spectrails[2]) + "\n" + \
             "- lower frontier.....:\n\t" + \
-                str(self.list_frontiers[0]) + "\n" + \
+                 str(self.list_frontiers[0]) + "\n" + \
             "- upper frontier.....:\n\t" + \
-                str(self.list_frontiers[1]) + "\n" + \
+                 str(self.list_frontiers[1]) + "\n" + \
             "- ttd_order..........: " + str(self.ttd_order) + "\n" + \
             "- ttd_aij............:\n\t" + str(self.ttd_aij) + "\n" + \
             "- ttd_bij............:\n\t" + str(self.ttd_bij) + "\n" + \
@@ -270,7 +270,7 @@ class Slitlet2D(object):
 
         # extract slitlet region
         slitlet2d = image_2k2k[(self.bb_ns1_orig - 1):self.bb_ns2_orig,
-                    (self.bb_nc1_orig - 1):self.bb_nc2_orig]
+                               (self.bb_nc1_orig - 1):self.bb_nc2_orig]
 
         # transform to float
         slitlet2d = slitlet2d.astype(np.float)
@@ -326,7 +326,6 @@ class Slitlet2D(object):
         if naxis2 != self.bb_ns2_orig - self.bb_ns1_orig + 1:
             raise ValueError("Unexpected slitlet2d_rect naxis2")
 
-        order = self.ttd_order
         if inverse:
             aij = self.tti_aij
             bij = self.tti_bij
