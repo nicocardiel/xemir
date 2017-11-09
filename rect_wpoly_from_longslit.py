@@ -1292,7 +1292,6 @@ def main(args=None):
         # crval1_enlarged = 11000.000  # Angstroms
         crval1_enlarged = 11220.0000  # Angstroms
         cdelt1_enlarged = 0.7575  # Angstroms/pixel
-        # naxis1_enlarged = 4134  # pixels
         naxis1_enlarged = 3400  # pixels
         nbrightlines = [18]
     elif grism_name == "H" and filter_name == "H":
@@ -1300,14 +1299,14 @@ def main(args=None):
         islitlet_max = 0
         crval1_enlarged = 14000.000  # Angstroms
         cdelt1_enlarged = 1.2000  # Angstroms/pixel
-        naxis1_enlarged = 4134  # pixels
+        naxis1_enlarged = 3400  # pixels
         nbrightlines = [0]
     elif grism_name == "K" and filter_name == "Ksp":
         islitlet_min = 0
         islitlet_max = 0
         crval1_enlarged = 19000.000  # Angstroms
         cdelt1_enlarged = 1.7000  # Angstroms/pixel
-        naxis1_enlarged = 4134  # pixels
+        naxis1_enlarged = 3400  # pixels
         nbrightlines = [0]
     elif grism_name == "LR" and filter_name == "YJ":
         islitlet_min = 0
