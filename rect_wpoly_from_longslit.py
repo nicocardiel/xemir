@@ -14,9 +14,9 @@ from skimage import restoration
 import sys
 from uuid import uuid4
 
+from numina.array.display.pause_debugplot import pause_debugplot
 from numina.array.display.polfit_residuals import \
     polfit_residuals_with_sigma_rejection
-from numina.array.display.pause_debugplot import pause_debugplot
 from numina.array.display.ximplotxy import ximplotxy
 from numina.array.display.ximshow import ximshow
 from numina.array.distortion import compute_distortion
