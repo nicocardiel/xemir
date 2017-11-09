@@ -105,8 +105,21 @@ class Slitlet2D_LS_Arc(object):
         units) in the original image.
     x0_reference : float
         X coordinate where the rectified y0_reference_middle is computed
-        as the Y coordinate of the spectrum trails. The same value
+        as the Y coordinate of the middle spectrum trail. The same value
         is used for all the available spectrum trails.
+    ilower_spectrail : int
+        Index indicating where the lower spectrail is stored within
+        list_spectrails.
+    imiddle_spectrail : int
+        Index indicating where the middle spectrail is stored within
+        list_spectrails.
+    iupper_spectrail : int
+        Index indicating where the upper spectrail is stored within
+        list_spectrails.
+    list_spectrails: list of SpectrumTrail instances
+        List of spectrum trails defined.
+    list_frontiers: list of SpectrumTrail instances
+        List of spectrum trails defining the slitlet frontiers.
     y0_reference_lower: float
         Y coordinate corresponding to the lower spectrum trail computed
         at x0_reference. This value is employed as the Y coordinate of
@@ -125,19 +138,6 @@ class Slitlet2D_LS_Arc(object):
     y0_frontier_upper: float
         Y coordinate corresponding to the upper frontier computed at
         x0_reference.
-    ilower_spectrail : int
-        Index indicating where the lower spectrail is stored within
-        list_spectrails.
-    imiddle_spectrail : int
-        Index indicating where the middle spectrail is stored within
-        list_spectrails.
-    iupper_spectrail : int
-        Index indicating where the upper spectrail is stored within
-        list_spectrails.
-    list_spectrails: list of SpectrumTrail instances
-        List of spectrum trails defined.
-    list_frontiers: list of SpectrumTrail instances
-        List of spectrum trails defining the slitlet frontiers.
     x_inter_orig : 1d numpy array, float
         X coordinates of the intersection points of arc lines with
         spectrum trails in the original image.
