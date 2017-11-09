@@ -47,8 +47,10 @@ from save_ndarray_to_fits import save_ndarray_to_fits
 from numina.array.display.pause_debugplot import DEBUGPLOT_CODES
 
 
-class Slitlet2D(object):
-    """Slitlet2D class definition.
+class Slitlet2D_LS_Arc(object):
+    """Slitlet2D_LS_Arc class definition.
+
+    Slitlet2D_LS_Arc: 2D slitlet class for Long-Slit Arc image
 
     It is important to distinguish between boundaries (the slitlet
     region when useful information is available) and frontiers (which
@@ -293,7 +295,7 @@ class Slitlet2D(object):
         self.debugplot = debugplot
 
     def __repr__(self):
-        """Define printable representation of a Slitlet2D instance."""
+        """Define printable representation of a Slitlet2D_LS_Arc instance."""
 
         # string with all the information
         output = "<Slilet2D instance>\n" + \
@@ -1374,11 +1376,11 @@ def main(args=None):
 
         cout = '.'
 
-        # define Slitlet2D object
-        slt = Slitlet2D(islitlet=islitlet,
-                        params=params, parmodel=parmodel,
-                        csu_conf=csu_conf,
-                        debugplot=args.debugplot)
+        # define Slitlet2D_LS_Arc object
+        slt = Slitlet2D_LS_Arc(islitlet=islitlet,
+                               params=params, parmodel=parmodel,
+                               csu_conf=csu_conf,
+                               debugplot=args.debugplot)
 
         # extract 2D image corresponding to the selected slitlet
         if islitlet % 2 == 0:
