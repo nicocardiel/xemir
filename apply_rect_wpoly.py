@@ -10,6 +10,7 @@ import sys
 from numina.array.display.pause_debugplot import pause_debugplot
 from numina.array.display.ximshow import ximshow
 from numina.array.distortion import order_fmap
+from numina.array.distortion import rectify2d
 
 from rect_wpoly_for_mos import islitlet_progress
 from set_wv_enlarged_parameters import set_wv_enlarged_parameters
@@ -278,14 +279,11 @@ class Slitlet2D(object):
                          first_pixel=(self.bb_nc1_orig, self.bb_ns1_orig),
                          show=False)
             xdum = np.linspace(1, NAXIS1_EMIR, num=NAXIS1_EMIR)
-            ylower = \
-                self.list_spectrails[0](xdum)
+            ylower = self.list_spectrails[0](xdum)
             ax.plot(xdum, ylower, 'b-')
-            ymiddle = \
-                self.list_spectrails[1](xdum)
+            ymiddle = self.list_spectrails[1](xdum)
             ax.plot(xdum, ymiddle, 'b--')
-            yupper = \
-                self.list_spectrails[2](xdum)
+            yupper = self.list_spectrails[2](xdum)
             ax.plot(xdum, yupper, 'b-')
             ylower_frontier = self.list_frontiers[0](xdum)
             ax.plot(xdum, ylower_frontier, 'b:')
@@ -295,6 +293,73 @@ class Slitlet2D(object):
 
         # return slitlet image
         return slitlet2d
+
+    def rectify(self, slitlet2d, resampling, inverse=False):
+        """Rectify slitlet using computed transformation.
+
+        Parameters
+        ----------
+        slitlet2d : 2d numpy array, float
+            Image containing the 2d slitlet image.
+        resampling : int
+            1: nearest neighbour, 2: flux preserving interpolation.
+        inverse : bool
+            If true, the inverse rectification transformation is
+            employed.
+
+        Returns
+        -------
+        slitlet2d_rect : 2d numpy array
+            Rectified slitlet image.
+
+        """
+
+        if resampling not in [1, 2]:
+            raise ValueError("Unexpected resampling value=" + str(resampling))
+
+        # verify image dimension
+        naxis2, naxis1 = slitlet2d.shape
+        if naxis1 != self.bb_nc2_orig - self.bb_nc1_orig + 1:
+            raise ValueError("Unexpected slitlet2d_rect naxis1")
+        if naxis2 != self.bb_ns2_orig - self.bb_ns1_orig + 1:
+            raise ValueError("Unexpected slitlet2d_rect naxis2")
+
+        order = self.ttd_order
+        if inverse:
+            aij = self.tti_aij
+            bij = self.tti_bij
+        else:
+            aij = self.ttd_aij
+            bij = self.ttd_bij
+
+        # rectify image
+        slitlet2d_rect = rectify2d(
+            image2d=slitlet2d,
+            aij=aij,
+            bij=bij,
+            resampling=resampling
+        )
+
+        if abs(self.debugplot % 10) != 0:
+            title = "Slitlet#" + str(self.islitlet) + " (rectify)"
+            ax = ximshow(slitlet2d_rect, title=title,
+                         first_pixel=(self.bb_nc1_orig, self.bb_ns1_orig),
+                         show=False)
+            # grid with fitted transformation: spectrum trails
+            xx = np.arange(0, self.bb_nc2_orig - self.bb_nc1_orig + 1,
+                           dtype=np.float)
+            for spectrail in self.list_spectrails:
+                yy0 = spectrail(self.x0_reference)
+                yy = np.tile([yy0 - self.bb_ns1_orig], xx.size)
+                ax.plot(xx + self.bb_nc1_orig, yy + self.bb_ns1_orig, "b")
+            for spectrail in self.list_frontiers:
+                yy0 = spectrail(self.x0_reference)
+                yy = np.tile([yy0 - self.bb_ns1_orig], xx.size)
+                ax.plot(xx + self.bb_nc1_orig, yy + self.bb_ns1_orig, "b:")
+            # show plot
+            pause_debugplot(self.debugplot, pltshow=True)
+
+        return slitlet2d_rect
 
 
 def main(args=None):
@@ -385,7 +450,9 @@ def main(args=None):
 
         if abs(args.debugplot) >= 10:
             print(slt)
-            slitlet2d = slt.extract_slitlet2d(image2d)
+
+        slitlet2d = slt.extract_slitlet2d(image2d)
+        slitlet2d_rect = slt.rectify(slitlet2d, resampling=1)
 
         pause_debugplot(args.debugplot)
 
