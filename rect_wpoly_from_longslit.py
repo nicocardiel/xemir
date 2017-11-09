@@ -125,6 +125,15 @@ class Slitlet2D_LS_Arc(object):
     y0_frontier_upper: float
         Y coordinate corresponding to the upper frontier computed at
         x0_reference.
+    ilower_spectrail : int
+        Index indicating where the lower spectrail is stored within
+        list_spectrails.
+    imiddle_spectrail : int
+        Index indicating where the middle spectrail is stored within
+        list_spectrails.
+    iupper_spectrail : int
+        Index indicating where the upper spectrail is stored within
+        list_spectrails.
     list_spectrails: list of SpectrumTrail instances
         List of spectrum trails defined.
     list_frontiers: list of SpectrumTrail instances
