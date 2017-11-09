@@ -1260,13 +1260,15 @@ def main(args=None):
         raise ValueError("DTU configuration from odd-numbered and "
                          "even-numbered slitlets FITS files are different")
 
+    # read fitted boundary parameters
     fitted_bound_param = json.loads(open(args.fitted_bound_param.name).read())
     parmodel = fitted_bound_param['meta-info']['parmodel']
     params = bound_params_from_dict(fitted_bound_param)
-    print('-' * 79)
-    print('* FITTED BOUND PARAMETERS')
-    params.pretty_print()
-    pause_debugplot(args.debugplot)
+    if abs(args.debugplot) >= 10:
+        print('-' * 79)
+        print('* FITTED BOUND PARAMETERS')
+        params.pretty_print()
+        pause_debugplot(args.debugplot)
 
     # read FITS image with odd-numbered slitlets
     hdulist_odd = fits.open(args.fitsfile_odd)
