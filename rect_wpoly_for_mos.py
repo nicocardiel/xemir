@@ -47,10 +47,9 @@ def main(args=None):
     parser.add_argument("input_list",
                         help="TXT file with list JSON files derived from "
                              "longslit data")
-    parser.add_argument("--out_json", required=True,
+    parser.add_argument("--out_MOSlibrary", required=True,
                         help="Output JSON file with results",
                         type=argparse.FileType('w'))
-
     # optional arguments
     parser.add_argument("--debugplot",
                         help="Integer indicating plotting & debugging options"
@@ -297,9 +296,9 @@ def main(args=None):
     # ---
 
     # Save resulting JSON structure
-    with open(args.out_json.name, 'w') as fstream:
+    with open(args.out_MOSlibrary.name, 'w') as fstream:
         json.dump(outdict, fstream, indent=2, sort_keys=True)
-        print('>>> Saving file ' + args.out_json.name)
+        print('>>> Saving file ' + args.out_MOSlibrary.name)
 
 
 if __name__ == "__main__":

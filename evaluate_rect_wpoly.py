@@ -22,16 +22,15 @@ def main(args=None):
     parser.add_argument("fitsfile",
                         help="Input FITS file",
                         type=argparse.FileType('r'))
-    parser.add_argument("--json_rect_wpoly", required=True,
+    parser.add_argument("--rect_wpoly_MOSlibrary", required=True,
                         help="Input JSON file with rectification and "
                              "wavelength calibration coefficients",
                         type=argparse.FileType('r'))
-
-    # optional arguments
-    parser.add_argument("--out_json",
+    parser.add_argument("--out_rect_wpoly", required=True,
                         help="Output JSON file with calibration computed for "
                              "the input FITS file",
                         type=argparse.FileType('w'))
+    # optional arguments
     parser.add_argument("--debugplot",
                         help="Integer indicating plotting & debugging options"
                              " (default=0)",
@@ -58,7 +57,7 @@ def main(args=None):
         print(dtu_conf)
 
     # read calibration structure from JSON file
-    rect_wpoly_dict = json.loads(open(args.json_rect_wpoly.name).read())
+    rect_wpoly_dict = json.loads(open(args.rect_wpoly_MOSlibrary.name).read())
 
     # check that the DTU configuration employed to obtain the calibration
     # corresponds to the DTU configuration in the input FITS file
@@ -169,9 +168,9 @@ def main(args=None):
         outdict['contents'][cslitlet]['wpoly_coeff'] = wpoly_coeff.tolist()
 
     # Save resulting JSON structure
-    with open(args.out_json.name, 'w') as fstream:
+    with open(args.out_rect_wpoly.name, 'w') as fstream:
         json.dump(outdict, fstream, indent=2, sort_keys=True)
-        print('>>> Saving file ' + args.out_json.name)
+        print('>>> Saving file ' + args.out_rect_wpoly.name)
 
 
 if __name__ == "__main__":
