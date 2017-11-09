@@ -59,7 +59,7 @@ def set_wv_enlarged_parameters(filter_name, grism_name):
     else:
         print("filter_name..:", filter_name)
         print("grism_name...:", grism_name)
-        raise ValueError("invalid grism_name and filter_name combination")
+        raise ValueError("invalid filter_name and grism_name combination")
 
     return crpix1_enlarged, crval1_enlarged, cdelt1_enlarged, naxis1_enlarged
 

@@ -41,10 +41,13 @@ from fit_boundaries import expected_distorted_frontiers
 from rescale_array_to_z1z2 import rescale_array_to_z1z2
 from rescale_array_to_z1z2 import rescale_array_from_z1z2
 from save_ndarray_to_fits import save_ndarray_to_fits
+from set_wv_enlarged_parameters import set_wv_enlarged_parameters
 
 from numina.array.display.pause_debugplot import DEBUGPLOT_CODES
 from emir_definitions import NAXIS1_EMIR
 from emir_definitions import NAXIS2_EMIR
+from emir_definitions import VALID_FILTERS
+from emir_definitions import VALID_GRISMS
 
 
 class Slitlet2D_LS_Arc(object):
@@ -1285,7 +1288,7 @@ def main(args=None):
     parmodel = fitted_bound_param['meta-info']['parmodel']
     params = bound_params_from_dict(fitted_bound_param)
     if abs(args.debugplot) >= 10:
-        print('-' * 79)
+        print('-' * 83)
         print('* FITTED BOUND PARAMETERS')
         params.pretty_print()
         pause_debugplot(args.debugplot)
@@ -1300,48 +1303,41 @@ def main(args=None):
     image2d_even = hdulist_even[0].data
     hdulist_even.close()
 
-    # determine parameters according to grism+filter combination
+    # read filter and grism names
     grism_name = fitted_bound_param['tags']['grism']
     filter_name = fitted_bound_param['tags']['filter']
-    crpix1_enlarged = 1.0  # center of first pixel
+    if filter_name not in VALID_FILTERS:
+        raise ValueError('Unexpected filter_name:', filter_name)
+    if grism_name not in VALID_GRISMS:
+        raise ValueError('Unexpected grism_name:', grism_name)
+
+    # determine parameters according to grism+filter combination
+    crpix1_enlarged, crval1_enlarged, cdelt1_enlarged, naxis1_enlarged = \
+        set_wv_enlarged_parameters(filter_name, grism_name)
     if grism_name == "J" and filter_name == "J":
         islitlet_min = 2
         islitlet_max = 54
-        # crval1_enlarged = 11000.000  # Angstroms
-        crval1_enlarged = 11220.0000  # Angstroms
-        cdelt1_enlarged = 0.7575  # Angstroms/pixel
-        naxis1_enlarged = 3400  # pixels
         nbrightlines = [18]
     elif grism_name == "H" and filter_name == "H":
         islitlet_min = 0
         islitlet_max = 0
-        crval1_enlarged = 14000.000  # Angstroms
-        cdelt1_enlarged = 1.2000  # Angstroms/pixel
-        naxis1_enlarged = 3400  # pixels
         nbrightlines = [0]
     elif grism_name == "K" and filter_name == "Ksp":
         islitlet_min = 0
         islitlet_max = 0
-        crval1_enlarged = 19000.000  # Angstroms
-        cdelt1_enlarged = 1.7000  # Angstroms/pixel
-        naxis1_enlarged = 3400  # pixels
         nbrightlines = [0]
     elif grism_name == "LR" and filter_name == "YJ":
         islitlet_min = 0
         islitlet_max = 0
-        crval1_enlarged = None  # Angstroms
-        cdelt1_enlarged = None  # Angstroms/pixel
-        naxis1_enlarged = None  # pixels
         nbrightlines = None
     elif grism_name == "LR" and filter_name == "HK":
         islitlet_min = 0
         islitlet_max = 0
-        crval1_enlarged = None  # Angstroms
-        cdelt1_enlarged = None  # Angstroms/pixel
-        naxis1_enlarged = None  # pixels
         nbrightlines = None
     else:
-        raise ValueError("invalid grism_name and/or filter_name")
+        print("filter_name..:", filter_name)
+        print("grism_name...:", grism_name)
+        raise ValueError("invalid grism_name and filter_name combination")
 
     # list of slitlets to be computed
     list_slitlets = range(islitlet_min, islitlet_max + 1)
