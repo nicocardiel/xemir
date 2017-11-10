@@ -175,7 +175,7 @@ def main(args=None):
         outdict['contents'][cslitlet]['tti_aij'] = tti_aij.tolist()
         outdict['contents'][cslitlet]['tti_bij'] = tti_bij.tolist()
         outdict['contents'][cslitlet]['wpoly_coeff'] = wpoly_coeff.tolist()
-        outdict['contents'][cslitlet]['wpoly_correction'] = []
+        outdict['contents'][cslitlet]['wpoly_correction'] = [0.0]
 
     # for each slitlet compute spectrum trails and frontiers using the
     # fitted boundary parameters
