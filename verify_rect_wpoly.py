@@ -33,6 +33,33 @@ def main(args=None):
                         default=None,
                         type=argparse.FileType('w'))
     # optional arguments
+    parser.add_argument("--threshold",
+                        help="Minimum signal in the line peaks (default=0)",
+                        default=0, type=float)
+    parser.add_argument("--nwinwidth_initial",
+                        help="Width of the window (pixels) where each peak "
+                             "must be initially found (default 7)",
+                        default=7, type=int)
+    parser.add_argument("--nwinwidth_refined",
+                        help="Width of the window (pixels) where each peak "
+                             "must be refined (default 5)",
+                        default=5, type=int)
+    parser.add_argument("--ntimes_match_wv",
+                        help="Times CDELT1 to match measured and expected "
+                             "wavelengths (default 2)",
+                        default=2, type=float)
+    parser.add_argument("--poldeg_residuals",
+                        help="Polynomial degree for fit to residuals "
+                             "(default 1)",
+                        default=1, type=int)
+    parser.add_argument("--times_sigma_reject",
+                        help="Times the standard deviation to reject points "
+                             "iteratively in the fit to residuals ("
+                             "default=5)",
+                        default=5, type=float)
+    parser.add_argument("--use_r",
+                        help="Perform additional statistical analysis with R",
+                        action="store_true")
     parser.add_argument("--geometry",
                         help="tuple x,y,dx,dy",
                         default="0,0,640,480")
@@ -77,7 +104,7 @@ def main(args=None):
 
     # read master arc line wavelengths (whole data set)
     wv_master_all = read_wv_master_file(
-        wv_master_file=args.verify_arc_lines,
+        wv_master_file=args.wv_master_file.name,
         lines='all',
         debugplot=args.debugplot
     )
@@ -86,21 +113,27 @@ def main(args=None):
     for islitlet in range(islitlet_min, islitlet_max + 1):
         sltmin = header['sltmin' + str(islitlet).zfill(2)]
         sltmax = header['sltmax' + str(islitlet).zfill(2)]
-        spmedian = np.median(image2d_rectified_wv[sltmin:(sltmax + 1)],
-                             axis=0)
+        spmedian = np.median(
+            image2d_rectified_wv[sltmin:(sltmax + 1)],
+            axis=0
+        )
         polyres, ysummary  = check_wlcalib_sp(
             sp=spmedian,
             crpix1=crpix1_enlarged,
             crval1=crval1_enlarged,
             cdelt1=cdelt1_enlarged,
             wv_master=wv_master_all,
-            threshold=3000,
-            poldeg_residuals=5,
-            use_r=False,
+            threshold=args.threshold,
+            nwinwidth_initial=args.nwinwidth_initial,
+            nwinwidth_refined=args.nwinwidth_refined,
+            ntimes_match_wv=args.ntimes_match_wv,
+            poldeg_residuals=args.poldeg_residuals,
+            times_sigma_reject=args.times_sigma_reject,
+            use_r=args.use_r,
             title= os.path.basename(args.fitsfile.name) + '[slitlet #' +
                    str(islitlet).zfill(2) + ']',
             geometry=geometry,
-            debugplot=12)
+            debugplot=args.debugplot)
 
         # ToDo: use last result to modify the initial wavelength
         # calibration polynomial...
