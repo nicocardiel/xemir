@@ -63,7 +63,7 @@ def main(args=None):
                         help="Perform additional statistical analysis with R",
                         action="store_true")
     parser.add_argument("--geometry",
-                        help="tuple x,y,dx,dy",
+                        help="tuple x,y,dx,dy (default 0,0,640,480)",
                         default="0,0,640,480")
     parser.add_argument("--debugplot",
                         help="integer indicating plotting/debugging" +
