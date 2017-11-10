@@ -185,7 +185,21 @@ class Slitlet2D(object):
         self.ttd_order = order_fmap(ncoef)
 
         # Wavelength calibration coefficients
-        self.wpoly = tmpcontent['wpoly_coeff']
+        wpoly_coeff = tmpcontent['wpoly_coeff']
+        # Correction to wavelength calibration
+        wpoly_correction = tmpcontent['wpoly_correction']
+        if len(wpoly_correction) == 0:
+            self.wpoly = wpoly_coeff
+        else:
+            # ToDo: finish this part!
+            self.wpoly = wpoly_coeff
+            """
+            pol1 = np.polynomial.Polynomial(wpoly_coeff)
+            wpoly_correction[0] += 1
+            pol2 = np.polynomial.Polynomial(wpoly_correction)
+            pol_product = pol1 * pol2
+            self.wpoly = pol_product.coef.tolist()
+            """
 
         # debugplot
         self.debugplot = debugplot
@@ -500,6 +514,15 @@ def main(args=None):
         # include scan range in FITS header
         header['sltmin' + str(islitlet).zfill(2)] = i1
         header['sltmax' + str(islitlet).zfill(2)] = i2 - 1
+
+        # modify upper limit of previous slitlet in case of overlapping:
+        # note that the overlapped scans have been overwritten with the
+        # information from the current slitlet!
+        cprevious = 'SLTMAX' + str(islitlet - 1).zfill(2)
+        if cprevious in header.keys():
+            sltmax_previous = header[cprevious]
+            if sltmax_previous >= i1:
+                header[cprevious] = i1 - 1
 
         pause_debugplot(args.debugplot)
 
