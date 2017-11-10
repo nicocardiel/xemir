@@ -11,7 +11,9 @@ from numina.array.display.pause_debugplot import pause_debugplot
 from numina.array.display.ximshow import ximshow
 from numina.array.distortion import order_fmap
 from numina.array.distortion import rectify2d
+from numina.array.wavecalib.__main__ import read_wv_master_file
 from numina.array.wavecalib.resample import resample_image2d_flux
+from numina.array.wavecalib.check_wlcalib import check_wlcalib_sp
 
 from dtu_configuration import DtuConfiguration
 from rect_wpoly_for_mos import islitlet_progress
@@ -320,7 +322,7 @@ class Slitlet2D(object):
         if resampling not in [1, 2]:
             raise ValueError("Unexpected resampling value=" + str(resampling))
 
-        # verify image dimension
+        # check image dimension
         naxis2, naxis1 = slitlet2d.shape
         if naxis1 != self.bb_nc2_orig - self.bb_nc1_orig + 1:
             raise ValueError("Unexpected slitlet2d_rect naxis1")
@@ -380,10 +382,10 @@ def main(args=None):
                              "wavelength calibrated image",
                         type=argparse.FileType('w'))
     # optional arguments
-    parser.add_argument("--verify_arc",
+    parser.add_argument("--verify_arc_lines",
                         help="Verify wavelength calibration (input FITS file "
                              "must be an arc exposure)",
-                        action="store_true")
+                        type=argparse.FileType('r'))
     parser.add_argument("--debugplot",
                         help="Integer indicating plotting & debugging options"
                              " (default=0)",
@@ -500,8 +502,8 @@ def main(args=None):
         image2d_rectified_wv[i1:i2, :] = slitlet2d_rect_wv[ii1:ii2, :]
 
         # include scan range in FITS header
-        header['nsmin' + str(islitlet).zfill(2)] = i1
-        header['nsmax' + str(islitlet).zfill(2)] = i2 - 1
+        header['sltmin' + str(islitlet).zfill(2)] = i1
+        header['sltmax' + str(islitlet).zfill(2)] = i2 - 1
 
         pause_debugplot(args.debugplot)
 
@@ -521,10 +523,32 @@ def main(args=None):
 
     # ---
 
-    # ToDo: continue here!
-    if args.verify_arc:
+    if args.verify_arc_lines:
+        # read master arc line wavelengths (whole data set)
+        wv_master_all = read_wv_master_file(
+            wv_master_file=args.verify_arc_lines,
+            lines='all',
+            debugplot=args.debugplot
+        )
         for islitlet in range(islitlet_min, islitlet_max + 1):
-            pass
+            sltmin = header['sltmin' + str(islitlet).zfill(2)]
+            sltmax = header['sltmax' + str(islitlet).zfill(2)]
+            spmedian = np.median(image2d_rectified_wv[sltmin:(sltmax + 1)],
+                                 axis=0)
+            polyres, ysummary  = check_wlcalib_sp(
+                sp=spmedian,
+                crpix1=crpix1_enlarged,
+                crval1=crval1_enlarged,
+                cdelt1=cdelt1_enlarged,
+                wv_master=wv_master_all,
+                threshold=3000,
+                poldeg_residuals=5,
+                use_r=False,
+                title='slitlet #' + str(islitlet).zfill(2),
+                debugplot=12)
+
+            # ToDo: use last result to modify the initial wavelength
+            # calibration polynomial...
 
 
 if __name__ == "__main__":
