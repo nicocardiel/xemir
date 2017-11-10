@@ -38,3 +38,6 @@ alias EMIR_evaluate_rect_wpoly=\
 alias EMIR_apply_rect_wpoly=\
 'python ~/s/xemir/apply_rect_wpoly.py'
 
+# verify wavelength calibration transformation
+alias EMIR_verify_rect_wpoly=\
+'python ~/s/xemir/verify_rect_wpoly.py'
