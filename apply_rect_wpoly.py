@@ -382,10 +382,6 @@ def main(args=None):
                         type=argparse.FileType('w'))
 
     # optional arguments
-    parser.add_argument("--verify_arc_lines",
-                        help="Verify wavelength calibration (input FITS file "
-                             "must be an arc exposure)",
-                        type=argparse.FileType('r'))
     parser.add_argument("--debugplot",
                         help="Integer indicating plotting & debugging options"
                              " (default=0)",
