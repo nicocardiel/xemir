@@ -6,6 +6,8 @@ import astropy.io.fits as fits
 import json
 import numpy as np
 import os
+import sys
+from uuid import uuid4
 
 from numina.array.wavecalib.__main__ import read_wv_master_file
 from numina.array.wavecalib.check_wlcalib import check_wlcalib_sp
@@ -109,6 +111,7 @@ def main(args=None):
         debugplot=args.debugplot
     )
 
+    basefilename = os.path.basename(args.fitsfile.name)
     # main loop
     for islitlet in range(islitlet_min, islitlet_max + 1):
         sltmin = header['sltmin' + str(islitlet).zfill(2)]
@@ -117,7 +120,7 @@ def main(args=None):
             image2d_rectified_wv[sltmin:(sltmax + 1)],
             axis=0
         )
-        polyres, ysummary  = check_wlcalib_sp(
+        polyres, ysummary = check_wlcalib_sp(
             sp=spmedian,
             crpix1=crpix1_enlarged,
             crval1=crval1_enlarged,
@@ -130,13 +133,20 @@ def main(args=None):
             poldeg_residuals=args.poldeg_residuals,
             times_sigma_reject=args.times_sigma_reject,
             use_r=args.use_r,
-            title= os.path.basename(args.fitsfile.name) + '[slitlet #' +
-                   str(islitlet).zfill(2) + ']',
+            title=basefilename + ' [slitlet #' + str(islitlet).zfill(2) + ']',
             geometry=geometry,
             debugplot=args.debugplot)
 
         # ToDo: use last result to modify the initial wavelength
         # calibration polynomial...
+
+    # update uuid for verified JSON structure
+    rect_wpoly_dict['uuid'] = str(uuid4())
+
+    # save verified JSON file
+    with open(args.verified_rect_wpoly.name, 'w') as fstream:
+        json.dump(rect_wpoly_dict, fstream, indent=2, sort_keys=True)
+        print('>>> Saving file ' + args.verified_rect_wpoly.name)
 
 
 if __name__ == "__main__":
