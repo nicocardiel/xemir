@@ -185,21 +185,7 @@ class Slitlet2D(object):
         self.ttd_order = order_fmap(ncoef)
 
         # Wavelength calibration coefficients
-        wpoly_coeff = tmpcontent['wpoly_coeff']
-        # Correction to wavelength calibration
-        wpoly_correction = tmpcontent['wpoly_correction']
-        if len(wpoly_correction) == 0:
-            self.wpoly = wpoly_coeff
-        else:
-            # ToDo: finish this part!
-            self.wpoly = wpoly_coeff
-            """
-            pol1 = np.polynomial.Polynomial(wpoly_coeff)
-            wpoly_correction[0] += 1
-            pol2 = np.polynomial.Polynomial(wpoly_correction)
-            pol_product = pol1 * pol2
-            self.wpoly = pol_product.coef.tolist()
-            """
+        self.wpoly = tmpcontent['wpoly_coeff']
 
         # debugplot
         self.debugplot = debugplot
