@@ -38,6 +38,7 @@ from dtu_configuration import DtuConfiguration
 from fit_boundaries import bound_params_from_dict
 from fit_boundaries import expected_distorted_boundaries
 from fit_boundaries import expected_distorted_frontiers
+from nscan_minmax import nscan_minmax
 from rescale_array_to_z1z2 import rescale_array_to_z1z2
 from rescale_array_to_z1z2 import rescale_array_from_z1z2
 from save_ndarray_to_fits import save_ndarray_to_fits
@@ -1643,13 +1644,8 @@ def main(args=None):
 
         # minimum and maximum useful scan (pixel in the spatial direction)
         # for the rectified slitlet
-        nscan_min = int(slt.y0_frontier_lower + 0.5)
-        if nscan_min < 1:
-            raise ValueError("nscan_min=" + str(nscan_min) + " is < 1")
-        nscan_max = int(slt.y0_frontier_upper + 0.5)
-        if nscan_max > NAXIS2_EMIR:
-            raise ValueError("nscan_min=" + str(nscan_max) +
-                             " is > NAXIS2_EMIR=" + str(NAXIS2_EMIR))
+        nscan_min, nscan_max = nscan_minmax(slt.y0_frontier_lower,
+                                            slt.y0_frontier_upper)
 
         # extract original 2D image corresponding to the selected slitlet
         if islitlet % 2 == 0:
