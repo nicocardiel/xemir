@@ -14,6 +14,7 @@ from numina.array.distortion import rectify2d
 from numina.array.wavecalib.resample import resample_image2d_flux
 
 from dtu_configuration import DtuConfiguration
+from nscan_minmax import nscan_minmax
 from rect_wpoly_for_mos import islitlet_progress
 from save_ndarray_to_fits import save_ndarray_to_fits
 from set_wv_enlarged_parameters import set_wv_enlarged_parameters
@@ -484,13 +485,8 @@ def main(args=None):
 
         # minimum and maximum useful scan (pixel in the spatial direction)
         # for the rectified slitlet
-        nscan_min = int(slt.y0_frontier_lower + 0.5)
-        if nscan_min < 1:
-            raise ValueError("nscan_min=" + str(nscan_min) + " is < 1")
-        nscan_max = int(slt.y0_frontier_upper + 0.5)
-        if nscan_max > NAXIS2_EMIR:
-            raise ValueError("nscan_min=" + str(nscan_max) +
-                             " is > NAXIS2_EMIR=" + str(NAXIS2_EMIR))
+        nscan_min, nscan_max = nscan_minmax(slt.y0_frontier_lower,
+                                            slt.y0_frontier_upper)
         ii1 = nscan_min - slt.bb_ns1_orig
         ii2 = nscan_max - slt.bb_ns1_orig + 1
         i1 = slt.bb_ns1_orig - 1 + ii1
@@ -501,16 +497,22 @@ def main(args=None):
         header['sltmin' + str(islitlet).zfill(2)] = i1
         header['sltmax' + str(islitlet).zfill(2)] = i2 - 1
 
-        # modify upper limit of previous slitlet in case of overlapping:
-        # note that the overlapped scans have been overwritten with the
-        # information from the current slitlet!
+    # modify upper limit of previous slitlet in case of overlapping:
+    # note that the overlapped scans have been overwritten with the
+    # information from the current slitlet!
+    for islitlet in range(islitlet_min, islitlet_max + 1):
         cprevious = 'SLTMAX' + str(islitlet - 1).zfill(2)
         if cprevious in header.keys():
             sltmax_previous = header[cprevious]
-            if sltmax_previous >= i1:
-                header[cprevious] = i1 - 1
-
-        pause_debugplot(args.debugplot)
+            cslitlet = 'SLTMIN' + str(islitlet).zfill(2)
+            sltmin_current = header[cslitlet]
+            if sltmax_previous >= sltmin_current:
+                print('WARNING: ' + cslitlet + '=' +
+                      str(sltmin_current).zfill(4) +
+                      ' overlaps with ' + cprevious + '=' +
+                      str(sltmax_previous).zfill(4) + ' ==> ' + cslitlet +
+                      ' set to ' + str(sltmin_current - 1).zfill(4))
+                header[cprevious] = sltmin_current - 1
 
     # update wavelength calibration in FITS header
     # ToDo: store values without deleting the original WCS information!
