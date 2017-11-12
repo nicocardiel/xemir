@@ -11,13 +11,16 @@ from uuid import uuid4
 
 from numina.array.wavecalib.__main__ import read_wv_master_file
 from numina.array.wavecalib.check_wlcalib import check_wlcalib_sp
+from numina.array.wavecalib.check_wlcalib import update_poly_wlcalib
 
 from numina.array.display.pause_debugplot import DEBUGPLOT_CODES
+from emir_definitions import NAXIS2_EMIR
 
 
 def main(args=None):
     # parse command-line options
     parser = argparse.ArgumentParser(prog='verify_rect_wpoly')
+
     # positional parameters
     parser.add_argument("fitsfile",
                         help="Rectified and wavelength calibrated FITS image",
@@ -34,6 +37,7 @@ def main(args=None):
                              "calibration",
                         default=None,
                         type=argparse.FileType('w'))
+
     # optional arguments
     parser.add_argument("--threshold",
                         help="Minimum signal in the line peaks (default=0)",
@@ -114,13 +118,14 @@ def main(args=None):
     basefilename = os.path.basename(args.fitsfile.name)
     # main loop
     for islitlet in range(islitlet_min, islitlet_max + 1):
+        cslitlet = 'slitlet' + str(islitlet).zfill(2)
         sltmin = header['sltmin' + str(islitlet).zfill(2)]
         sltmax = header['sltmax' + str(islitlet).zfill(2)]
         spmedian = np.median(
             image2d_rectified_wv[sltmin:(sltmax + 1)],
             axis=0
         )
-        polyres, ysummary = check_wlcalib_sp(
+        polyres, ysummary, xyrfit = check_wlcalib_sp(
             sp=spmedian,
             crpix1=crpix1_enlarged,
             crval1=crval1_enlarged,
@@ -134,11 +139,22 @@ def main(args=None):
             times_sigma_reject=args.times_sigma_reject,
             use_r=args.use_r,
             title=basefilename + ' [slitlet #' + str(islitlet).zfill(2) + ']',
+            full=True,
             geometry=geometry,
             debugplot=args.debugplot)
 
-        # ToDo: use last result to modify the initial wavelength
-        # calibration polynomial...
+        # ToDo: ask the user for confirmation
+
+        # include correction in wavelength calibration
+        wpoly_coeff = rect_wpoly_dict['contents'][cslitlet]['wpoly_coeff']
+        wpoly_coeff_updated = update_poly_wlcalib(
+            coeff_ini=wpoly_coeff,
+            coeff_residuals=polyres.coef,
+            xyrfit=xyrfit,
+            naxis2=NAXIS2_EMIR
+        )
+        rect_wpoly_dict['contents'][cslitlet]['wpoly_coeff'] = \
+            wpoly_coeff_updated.tolist()
 
     # update uuid for verified JSON structure
     rect_wpoly_dict['uuid'] = str(uuid4())
