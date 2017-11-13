@@ -176,16 +176,38 @@ def main(args=None):
             if args.interactive:
                 # include correction to initial wavelength calibration after
                 # confirmation by the user
-                print("Update wavelength calibration polynomial (y/n) [y]? ",
-                      end='')
-                coption = sys.stdin.readline().strip()
+                print("Update wavelength calibration polynomial with "
+                      "last fit:")
+                loop = True
+                while(loop):
+                    print("(y)es, (n)o, (u)ser defined correction polynomial "
+                          "[y]? ", end='')
+                    coption = sys.stdin.readline().strip()
+                    coption = coption.lower()
+                    if coption == '':
+                        coption = 'y'
+                    if coption in 'ynu':
+                        loop = False
             else:
                 coption = 'y'
-            if coption == 'y' or coption == 'Y' or coption == '':
+            if coption == 'y' or coption == 'u':
                 wpoly_coeff = rect_wpoly_dict['contents'][cslitlet]['wpoly_coeff']
+                if coption == 'y':
+                    coeff_residuals = polyres.coef
+                elif coption == 'u':
+                    print("Polynomial degree? ", end='')
+                    degcorr = int(sys.stdin.readline().strip())
+                    coeff_residuals = np.zeros(degcorr + 1)
+                    for idum in range(degcorr + 1):
+                        print("Coefficient #" + str(idum) + "? ", end='')
+                        coeff_residuals[idum] = \
+                            float(sys.stdin.readline().strip())
+                else:
+                    raise ValueError('Unexpected coption=' + str(coption))
+
                 wpoly_coeff_updated = update_poly_wlcalib(
                     coeff_ini=wpoly_coeff,
-                    coeff_residuals=polyres.coef,
+                    coeff_residuals=coeff_residuals,
                     xyrfit=xyrfit,
                     naxis1=NAXIS1_EMIR,
                     debugplot=0
