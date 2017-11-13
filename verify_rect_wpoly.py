@@ -3,12 +3,14 @@ from __future__ import print_function
 
 import argparse
 import astropy.io.fits as fits
+import decimal
 import json
 import numpy as np
 import os
 import sys
 from uuid import uuid4
 
+from numina.array.display.matplotlib_qt import plt
 from numina.array.wavecalib.__main__ import read_wv_master_file
 from numina.array.wavecalib.check_wlcalib import check_wlcalib_sp
 from numina.array.wavecalib.check_wlcalib import update_poly_wlcalib
@@ -71,8 +73,8 @@ def main(args=None):
                         default="0,0,640,480")
     parser.add_argument("--debugplot",
                         help="integer indicating plotting/debugging" +
-                             " (default=0)",
-                        type=int, default=12,
+                             " (default=-11)",
+                        type=int, default=-11,
                         choices=DEBUGPLOT_CODES)
     parser.add_argument("--echo",
                         help="Display full command line",
@@ -116,17 +118,24 @@ def main(args=None):
     )
 
     basefilename = os.path.basename(args.fitsfile.name)
+
     # main loop
     for islitlet in range(islitlet_min, islitlet_max + 1):
         cslitlet = 'slitlet' + str(islitlet).zfill(2)
+        if abs(args.debugplot) >= 10:
+            print('=' * 79)
+            print(">>> " + cslitlet)
+
         # scan region spanned by current slitlet
         sltmin = header['sltmin' + str(islitlet).zfill(2)]
         sltmax = header['sltmax' + str(islitlet).zfill(2)]
+
         # median spectrum
         spmedian = np.median(
             image2d_rectified_wv[sltmin:(sltmax + 1)],
             axis=0
         )
+
         # check wavelength calibration
         polyres, ysummary, xyrfit = check_wlcalib_sp(
             sp=spmedian,
@@ -144,21 +153,32 @@ def main(args=None):
             title=basefilename + ' [slitlet #' + str(islitlet).zfill(2) + ']',
             full=True,
             geometry=geometry,
-            debugplot=args.debugplot)
+            debugplot=abs(args.debugplot))
 
-        # ToDo: ask the user for confirmation
-
-        # include correction to initial wavelength calibration
-        wpoly_coeff = rect_wpoly_dict['contents'][cslitlet]['wpoly_coeff']
-        wpoly_coeff_updated = update_poly_wlcalib(
-            coeff_ini=wpoly_coeff,
-            coeff_residuals=polyres.coef,
-            xyrfit=xyrfit,
-            naxis1=NAXIS1_EMIR,
-            debugplot=0
-        )
-        rect_wpoly_dict['contents'][cslitlet]['wpoly_coeff'] = \
-            wpoly_coeff_updated.tolist()
+        # include correction to initial wavelength calibration after
+        # confirmation by the user
+        print("Update wavelength calibration polynomial (y/n) [n]? ",
+              end='')
+        coption = sys.stdin.readline().strip()
+        if args.debugplot < 0:
+            plt.close()
+        if coption == 'y' or coption == 'Y':
+            wpoly_coeff = rect_wpoly_dict['contents'][cslitlet]['wpoly_coeff']
+            wpoly_coeff_updated = update_poly_wlcalib(
+                coeff_ini=wpoly_coeff,
+                coeff_residuals=polyres.coef,
+                xyrfit=xyrfit,
+                naxis1=NAXIS1_EMIR,
+                debugplot=0
+            ).tolist()
+            rect_wpoly_dict['contents'][cslitlet]['wpoly_coeff'] = \
+                wpoly_coeff_updated
+            if abs(args.debugplot) >= 10:
+                for idum, fdum in \
+                        enumerate(zip(wpoly_coeff, wpoly_coeff_updated)):
+                    print(">>> coef#" + str(idum) + ':  ', end='')
+                    print("%+.8E  -->  %+.8E" % (decimal.Decimal(fdum[0]),
+                                                 decimal.Decimal(fdum[1])))
 
     # update uuid for verified JSON structure
     rect_wpoly_dict['uuid'] = str(uuid4())
