@@ -15,6 +15,8 @@ from numina.array.wavecalib.__main__ import read_wv_master_file
 from numina.array.wavecalib.check_wlcalib import check_wlcalib_sp
 from numina.array.wavecalib.check_wlcalib import update_poly_wlcalib
 
+from rect_wpoly_for_mos import islitlet_progress
+
 from numina.array.display.pause_debugplot import DEBUGPLOT_CODES
 from emir_definitions import NAXIS1_EMIR
 
@@ -37,10 +39,17 @@ def main(args=None):
     parser.add_argument("--verified_rect_wpoly", required=True,
                         help="Output JSON file with improved wavelength "
                              "calibration",
-                        default=None,
                         type=argparse.FileType('w'))
 
     # optional arguments
+    parser.add_argument("--interactive",
+                        help="Ask the user for confirmation before updating "
+                             "the wavelength calibration polynomial",
+                        action="store_true")
+    parser.add_argument("--min_nlines",
+                        help="Minimum number of lines that must be identified "
+                             "(default=0: no minimum is required)",
+                        default=0, type=int)
     parser.add_argument("--threshold",
                         help="Minimum signal in the line peaks (default=0)",
                         default=0, type=float)
@@ -121,6 +130,8 @@ def main(args=None):
 
     # main loop
     for islitlet in range(islitlet_min, islitlet_max + 1):
+        if args.debugplot == 0 and not args.interactive:
+            islitlet_progress(islitlet, islitlet_max)
         cslitlet = 'slitlet' + str(islitlet).zfill(2)
         if abs(args.debugplot) >= 10:
             print('=' * 79)
@@ -155,30 +166,40 @@ def main(args=None):
             geometry=geometry,
             debugplot=abs(args.debugplot))
 
-        # include correction to initial wavelength calibration after
-        # confirmation by the user
-        print("Update wavelength calibration polynomial (y/n) [n]? ",
-              end='')
-        coption = sys.stdin.readline().strip()
+        npoints_total = len(xyrfit[0])
+        npoints_removed = sum(xyrfit[2])
+        npoints_used = npoints_total - npoints_removed
+        if abs(args.debugplot) >= 10:
+            print('>>> Npoints (total / used / removed)..:',
+                  npoints_total, npoints_used, npoints_removed)
+        if npoints_used > args.min_nlines:
+            if args.interactive:
+                # include correction to initial wavelength calibration after
+                # confirmation by the user
+                print("Update wavelength calibration polynomial (y/n) [y]? ",
+                      end='')
+                coption = sys.stdin.readline().strip()
+            else:
+                coption = 'y'
+            if coption == 'y' or coption == 'Y' or coption == '':
+                wpoly_coeff = rect_wpoly_dict['contents'][cslitlet]['wpoly_coeff']
+                wpoly_coeff_updated = update_poly_wlcalib(
+                    coeff_ini=wpoly_coeff,
+                    coeff_residuals=polyres.coef,
+                    xyrfit=xyrfit,
+                    naxis1=NAXIS1_EMIR,
+                    debugplot=0
+                ).tolist()
+                rect_wpoly_dict['contents'][cslitlet]['wpoly_coeff'] = \
+                    wpoly_coeff_updated
+                if abs(args.debugplot) >= 10:
+                    for idum, fdum in \
+                            enumerate(zip(wpoly_coeff, wpoly_coeff_updated)):
+                        print(">>> coef#" + str(idum) + ':  ', end='')
+                        print("%+.8E  -->  %+.8E" % (decimal.Decimal(fdum[0]),
+                                                     decimal.Decimal(fdum[1])))
         if args.debugplot < 0:
             plt.close()
-        if coption == 'y' or coption == 'Y':
-            wpoly_coeff = rect_wpoly_dict['contents'][cslitlet]['wpoly_coeff']
-            wpoly_coeff_updated = update_poly_wlcalib(
-                coeff_ini=wpoly_coeff,
-                coeff_residuals=polyres.coef,
-                xyrfit=xyrfit,
-                naxis1=NAXIS1_EMIR,
-                debugplot=0
-            ).tolist()
-            rect_wpoly_dict['contents'][cslitlet]['wpoly_coeff'] = \
-                wpoly_coeff_updated
-            if abs(args.debugplot) >= 10:
-                for idum, fdum in \
-                        enumerate(zip(wpoly_coeff, wpoly_coeff_updated)):
-                    print(">>> coef#" + str(idum) + ':  ', end='')
-                    print("%+.8E  -->  %+.8E" % (decimal.Decimal(fdum[0]),
-                                                 decimal.Decimal(fdum[1])))
 
     # update uuid for verified JSON structure
     rect_wpoly_dict['uuid'] = str(uuid4())
