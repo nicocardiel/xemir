@@ -14,7 +14,7 @@ from numina.array.wavecalib.check_wlcalib import check_wlcalib_sp
 from numina.array.wavecalib.check_wlcalib import update_poly_wlcalib
 
 from numina.array.display.pause_debugplot import DEBUGPLOT_CODES
-from emir_definitions import NAXIS2_EMIR
+from emir_definitions import NAXIS1_EMIR
 
 
 def main(args=None):
@@ -119,12 +119,15 @@ def main(args=None):
     # main loop
     for islitlet in range(islitlet_min, islitlet_max + 1):
         cslitlet = 'slitlet' + str(islitlet).zfill(2)
+        # scan region spanned by current slitlet
         sltmin = header['sltmin' + str(islitlet).zfill(2)]
         sltmax = header['sltmax' + str(islitlet).zfill(2)]
+        # median spectrum
         spmedian = np.median(
             image2d_rectified_wv[sltmin:(sltmax + 1)],
             axis=0
         )
+        # check wavelength calibration
         polyres, ysummary, xyrfit = check_wlcalib_sp(
             sp=spmedian,
             crpix1=crpix1_enlarged,
@@ -145,13 +148,14 @@ def main(args=None):
 
         # ToDo: ask the user for confirmation
 
-        # include correction in wavelength calibration
+        # include correction to initial wavelength calibration
         wpoly_coeff = rect_wpoly_dict['contents'][cslitlet]['wpoly_coeff']
         wpoly_coeff_updated = update_poly_wlcalib(
             coeff_ini=wpoly_coeff,
             coeff_residuals=polyres.coef,
             xyrfit=xyrfit,
-            naxis2=NAXIS2_EMIR
+            naxis1=NAXIS1_EMIR,
+            debugplot=0
         )
         rect_wpoly_dict['contents'][cslitlet]['wpoly_coeff'] = \
             wpoly_coeff_updated.tolist()
