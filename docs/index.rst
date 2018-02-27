@@ -11,10 +11,4 @@ Welcome to pyemir-auxiliary-scripts's documentation!
    :caption: Contents:
 
 
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+   precomputed_calibrations
