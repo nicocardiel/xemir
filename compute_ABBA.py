@@ -66,11 +66,11 @@ def compute_abba_result(list_of_fileinfo, outfile):
 
     # save results, including partial subtractions
     hdu = fits.PrimaryHDU(result_ini.astype(np.float), image_header)
-    hdu.writeto(outfile + '_sub1.fits', clobber=True)
+    hdu.writeto(outfile + '_sub1.fits', overwrite=True)
     hdu = fits.PrimaryHDU(result_end.astype(np.float), image_header)
-    hdu.writeto(outfile + '_sub2.fits', clobber=True)
+    hdu.writeto(outfile + '_sub2.fits', overwrite=True)
     hdu = fits.PrimaryHDU(result.astype(np.float), image_header)
-    hdu.writeto(outfile + '.fits', clobber=True)
+    hdu.writeto(outfile + '.fits', overwrite=True)
 
 
 def main(args=None):
